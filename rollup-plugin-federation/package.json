@@ -1,0 +1,34 @@
+{
+  "name": "rollup-plugin-federation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.mjs",
+  "homepage": "",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc"
+  },
+  "author": "",
+  "files": [
+    "src",
+    "lib",
+    "dist"
+  ],
+  "keywords": [],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "fyn": {
+    "devDependencies": {
+      "rollup": "../rollup"
+    }
+  },
+  "devDependencies": {
+    "@rollup/pluginutils": "^5.0.2",
+    "@types/node": "^20.4.4",
+    "rollup": "^3.26.2",
+    "typescript": "^5.1.6"
+  }
+}

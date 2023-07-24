@@ -1,0 +1,38 @@
+{
+  "name": "react-federation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "homepage": "",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "rollup -c",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "files": [
+    "src",
+    "lib",
+    "dist"
+  ],
+  "keywords": [],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "fyn": {
+    "devDependencies": {
+      "rollup": "../rollup",
+      "rollup-plugin-federation": "../rollup-plugin-federation"
+    }
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.3",
+    "@rollup/plugin-node-resolve": "^15.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "rollup": "^3.26.2",
+    "rollup-plugin-federation": "^1.0.0",
+    "typescript": "^5.1.6"
+  }
+}
