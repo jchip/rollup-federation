@@ -1,5 +1,5 @@
 {
-  "name": "rollup-federation",
+  "name": "federation-js",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -18,13 +18,5 @@
   "repository": {
     "type": "git",
     "url": ""
-  },
-  "fyn": {
-    "dependencies": {
-      "fynpo": "../pub/fynpo/packages/fynpo"
-    }
-  },
-  "dependencies": {
-    "fynpo": "^1.1.43"
   }
 }

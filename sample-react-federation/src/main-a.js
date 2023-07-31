@@ -12,4 +12,4 @@ console.log("react", React);
 
 const ReactDOM = await import("react-dom");
 
-console.log("ReactDOM", ReactDOM);
+console.log("ReactDOM", ReactDOM, import.meta.url);

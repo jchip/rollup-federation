@@ -1,12 +1,19 @@
 {
-  "changeLogMarkers": [
-    "## Packages",
-    "## Commits"
-  ],
+  "changeLogMarkers": ["## Packages", "## Commits"],
   "command": {
     "publish": {
       "tags": {},
       "versionTagging": {}
     }
+  },
+  "caching": {
+    "enable": true,
+    "server": "http://localhost:8080/upload",
+    "compression": "brotli",
+    "pruning": {
+      "highCount": 12,
+      "keepCount": 6
+    },
+    "alwaysUploadToRemote": false
   }
 }

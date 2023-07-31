@@ -8,3 +8,5 @@ rollup
 fyn-lock.yaml
 sample-code-splitting
 dist
+*.log
+.fynpo

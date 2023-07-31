@@ -34,5 +34,9 @@
     "rollup": "^3.26.2",
     "rollup-plugin-federation": "^1.0.0",
     "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "share-a": "^2.0.0",
+    "share-a-nest": "^1.0.0"
   }
 }

@@ -1,8 +1,8 @@
 {
-  "name": "rollup-federation",
+  "name": "share-a-nest",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "index.mjs",
   "homepage": "",
   "license": "UNLICENSED",
   "scripts": {
@@ -19,12 +19,7 @@
     "type": "git",
     "url": ""
   },
-  "fyn": {
-    "dependencies": {
-      "fynpo": "../pub/fynpo/packages/fynpo"
-    }
-  },
   "dependencies": {
-    "fynpo": "^1.1.43"
+    "share-a": "^1.0.0"
   }
 }

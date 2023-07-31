@@ -27,8 +27,13 @@
   },
   "devDependencies": {
     "@rollup/pluginutils": "^5.0.2",
+    "@types/lodash-es": "^4.17.8",
     "@types/node": "^20.4.4",
     "rollup": "^3.26.2",
     "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "lodash-es": "^4.17.21",
+    "xaa": "^1.7.3"
   }
 }
