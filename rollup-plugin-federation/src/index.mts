@@ -71,6 +71,23 @@ export default function federation(_options: any): Plugin {
     name: "rollup-plugin-module-federation",
 
     resolveId(id: string, importer: string | undefined, resolveOptions) {
+      if (id === filename) {
+        return { id: entryId, moduleSideEffects: "no-treeshake" };
+      }
+
+      // ignore IDs with null character, these belong to other plugins
+      if (/\0/.test(id)) {
+        return null;
+      }
+
+      if (
+        importer &&
+        /\0/.test(importer) &&
+        importer.includes("?commonjs-external")
+      ) {
+        return null;
+      }
+
       let nmNameIx = 0;
       if (isAbsolute(id) && (nmNameIx = id.indexOf(nmPathSig)) > 0) {
         const fynNmIx = id.indexOf(fynPathSig);
@@ -92,23 +109,6 @@ export default function federation(_options: any): Plugin {
         }
       }
       debug("resolveId", nmName, id);
-
-      if (id === filename) {
-        return { id: entryId, moduleSideEffects: "no-treeshake" };
-      }
-
-      // ignore IDs with null character, these belong to other plugins
-      if (/\0/.test(id)) {
-        return null;
-      }
-
-      if (
-        importer &&
-        /\0/.test(importer) &&
-        importer.includes("?commonjs-external")
-      ) {
-        return null;
-      }
 
       let shareKey;
       const sharedObj =
@@ -284,7 +284,17 @@ imports: ${chunk.imports}
 `;
       const myId = `_${CONTAINER_SIG}${_options.name}`;
       if (chunk.name === myId) {
-        debug("collected shares", collectedShares);
+        // debug("collected shares", JSON.stringify(collectedShares, null, 2));
+        if (_options.debugging) {
+          const source = JSON.stringify(collectedShares, null, 2) + "\n";
+
+          this.emitFile({
+            fileName: "__collected_shares.json",
+            source,
+            type: "asset",
+          });
+        }
+
         return `${chunkS}(function (Federation){
 //
 var ${CONTAINER_VAR} = Federation._mfContainer(
@@ -304,7 +314,8 @@ var System = Federation._mfBind(
   {
     n: '${chunk.name}', // chunk name
     f: '${chunk.fileName}', // chunk fileName
-    c: '${_options.name}' // federation container name
+    c: '${_options.name}', // federation container name
+    s: '${shareScope}', // default scope name
   },
   // module federation mapping data
   {
@@ -351,7 +362,7 @@ var System = Federation._mfBind(
         moduleId,
         targetModuleId
       );
-      if (moduleId.includes("_plugin_1")) {
+      if (moduleId === entryId) {
         return {
           left: "_f(",
           right: ")",

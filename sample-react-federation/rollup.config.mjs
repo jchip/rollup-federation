@@ -27,7 +27,7 @@ export default {
       shared: {
         react: {
           eager: true,
-          import: false,
+          import: "react",
           singleton: true,
           requiredVersion: "18",
         },
