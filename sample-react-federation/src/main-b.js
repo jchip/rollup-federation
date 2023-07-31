@@ -6,8 +6,9 @@ import { hello as hello1 } from "share-a-nest";
 import { blah } from "some-external-module";
 import "./federation";
 import { xyz } from "blah-external";
+import { bootstrap } from "@foo/pkg/bootstrap";
 
-console.log("react", React, blah, xyz);
+console.log("react", React, blah, xyz, bootstrap);
 import("blah-external").then(() => {});
 
 import("./dynamically-imported/apply-color-and-message.js").then(

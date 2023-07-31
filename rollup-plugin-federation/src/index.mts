@@ -63,6 +63,10 @@ export default function federation(_options: any): Plugin {
   const fynPathSig = "/node_modules/.f/_/";
   const collectedShares: Record<string, any> = {};
 
+  const debug = _options.debugging
+    ? (...args: any[]) => console.log(...args)
+    : () => {};
+
   return {
     name: "rollup-plugin-module-federation",
 
@@ -87,35 +91,48 @@ export default function federation(_options: any): Plugin {
           nmName = parts[0];
         }
       }
-      console.log("resolveId", nmName, id);
+      debug("resolveId", nmName, id);
 
       if (id === filename) {
         return { id: entryId, moduleSideEffects: "no-treeshake" };
       }
 
       // ignore IDs with null character, these belong to other plugins
-      if (/\0/.test(id)) return null;
+      if (/\0/.test(id)) {
+        return null;
+      }
 
-      if (!importer || /\0/.test(importer)) return null;
+      if (
+        importer &&
+        /\0/.test(importer) &&
+        importer.includes("?commonjs-external")
+      ) {
+        return null;
+      }
 
       let shareKey;
       const sharedObj =
         shared[(shareKey = id)] || (nmName && shared[(shareKey = nmName)]);
       if (sharedObj) {
-        const importerDir = dirname(importer);
-        const collectedKey = `${id}\t${importerDir}`;
-        let collectedObj = collectedShares[collectedKey];
-        if (!collectedObj) {
-          collectedObj = collectedShares[collectedKey] = {
-            ...sharedObj,
-            _key: shareKey,
-            importee: id,
-            importerDir,
-            importers: [],
-            resolveOptions,
-          };
+        if (importer !== undefined && importer !== entryId) {
+          const interimNm =
+            importer.includes(nmPathSig) && !id.includes(nmPathSig);
+          const importerDir = dirname(importer);
+          const collectedKey = `${id}\t${importerDir}`;
+          let collectedObj = collectedShares[collectedKey];
+          if (!collectedObj) {
+            collectedObj = collectedShares[collectedKey] = {
+              ...sharedObj,
+              _key: shareKey,
+              importee: id,
+              importerDir,
+              importers: [],
+              resolveOptions,
+              interimNm,
+            };
+            collectedObj.importers.push(importer);
+          }
         }
-        collectedObj.importers.push(importer);
         if (sharedObj.import === false) {
           return { id, external: true };
         }
@@ -125,7 +142,7 @@ export default function federation(_options: any): Plugin {
     },
 
     buildStart() {
-      // console.log("buildStart");
+      debug("buildStart");
       if (!lastModuleWait) {
         lastModuleWait = makeAlarm(20, async () => {
           const x = Array.from(this.getModuleIds()).filter((id) => {
@@ -139,7 +156,7 @@ export default function federation(_options: any): Plugin {
     },
 
     buildEnd() {
-      console.log("buildEnd!!!");
+      debug("buildEnd!!!");
       // this.emitFile({
       //   type: "chunk",
       //   id: "plugin-entry.js",
@@ -147,7 +164,7 @@ export default function federation(_options: any): Plugin {
     },
 
     async load(id) {
-      console.log("load", id);
+      debug("load", id);
       if (
         lastModuleWait &&
         !lastModuleWait.isArmed() &&
@@ -160,7 +177,7 @@ export default function federation(_options: any): Plugin {
       if (id === entryId) {
         try {
           await lastModuleWait.defer.promise;
-          // console.log(
+          // debug(
           //   "returning plugin entry",
           //   id,
           //   Array.from(this.getModuleIds()).filter((id) => {
@@ -254,7 +271,9 @@ export function get(name, version, scope) {
     // },
 
     banner(chunk) {
-      const chunkS = `/*
+      const chunkS = !_options.debugging
+        ? ""
+        : `/*
 exports: ${chunk.exports}
 facadeModuleId: ${chunk.facadeModuleId}
 moduleIds: ${chunk.moduleIds.join("\n  ")}
@@ -265,7 +284,7 @@ imports: ${chunk.imports}
 `;
       const myId = `_${CONTAINER_SIG}${_options.name}`;
       if (chunk.name === myId) {
-        console.log("collected shares", collectedShares);
+        debug("collected shares", collectedShares);
         return `${chunkS}(function (Federation){
 //
 var ${CONTAINER_VAR} = Federation._mfContainer(
@@ -277,7 +296,7 @@ var System = ${CONTAINER_VAR};
 `;
       }
 
-      console.log("banner", chunk.name);
+      debug("banner", chunk.name);
 
       return `${chunkS}(function (Federation){ 
 //
@@ -306,7 +325,7 @@ var System = Federation._mfBind(
       // @ts-ignore
       options
     ) {
-      // console.log("resolveDynamicImport", specifier, importer, options);
+      // debug("resolveDynamicImport", specifier, importer, options);
 
       // if (specifier && specifier.includes("apply-color")) {
       //   return specifier + `?mf=1&s=default&v=^1.7.1`;
@@ -325,7 +344,7 @@ var System = Federation._mfBind(
       // @ts-ignore
       targetModuleId,
     }) {
-      console.log(
+      debug(
         "renderDynamicImport",
         customResolution,
         format,

@@ -1,11 +1,21 @@
 import federation from "rollup-plugin-federation";
 import { nodeResolve } from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
+import terser from "@rollup/plugin-terser";
+import replace from "@rollup/plugin-replace";
+
+const isProduction = process.env.NODE_ENV === "production";
 
 export default {
   input: ["src/main-a.js", "src/main-b.js", "plugin-entry.js"],
   plugins: [
     nodeResolve(),
+    replace({
+      preventAssignment: true,
+      "process.env.NODE_ENV": JSON.stringify(
+        process.env.NODE_ENV || "development"
+      ),
+    }),
     commonjs({
       transformMixedEsModules: true,
     }),
@@ -13,6 +23,7 @@ export default {
       name: "plugin_1",
       filename: "plugin-entry.js",
       shareScope: "test",
+      debugging: true,
       shared: {
         react: {
           eager: true,
@@ -29,8 +40,12 @@ export default {
         "share-a": {
           requiredVersion: "2",
         },
+        "@foo/pkg/bootstrap": {
+          import: "./src/bootstrap",
+        },
       },
     }),
+    isProduction && terser(),
   ],
   output: [
     // ES module version, for modern browsers
