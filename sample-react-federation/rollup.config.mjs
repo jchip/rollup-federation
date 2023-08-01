@@ -8,6 +8,7 @@ const isProduction = process.env.NODE_ENV === "production";
 
 export default {
   input: ["src/main-a.js", "src/main-b.js", "plugin-entry.js"],
+  preserveSymlinks: true,
   plugins: [
     nodeResolve(),
     replace({
@@ -27,7 +28,7 @@ export default {
       shared: {
         react: {
           eager: true,
-          import: "react",
+          import: false,
           singleton: true,
           requiredVersion: "18",
         },

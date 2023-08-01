@@ -10,3 +10,4 @@ sample-code-splitting
 dist
 *.log
 .fynpo
+plugins

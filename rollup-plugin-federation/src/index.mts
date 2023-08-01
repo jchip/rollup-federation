@@ -6,7 +6,7 @@ import type {
 // import { setTimeout as sleep } from "node:timers/promises";
 import { makeDefer } from "xaa";
 import { pick } from "lodash-es";
-import { dirname, isAbsolute } from "node:path";
+import { dirname, basename, isAbsolute } from "node:path";
 
 const CONTAINER_SIG = `_mf_container_`;
 const CONTAINER_PREFIX = `\0${CONTAINER_SIG}`;
@@ -80,11 +80,7 @@ export default function federation(_options: any): Plugin {
         return null;
       }
 
-      if (
-        importer &&
-        /\0/.test(importer) &&
-        importer.includes("?commonjs-external")
-      ) {
+      if (importer && /\0/.test(importer) && importer.includes("?commonjs")) {
         return null;
       }
 
@@ -118,20 +114,18 @@ export default function federation(_options: any): Plugin {
           const interimNm =
             importer.includes(nmPathSig) && !id.includes(nmPathSig);
           const importerDir = dirname(importer);
-          const collectedKey = `${id}\t${importerDir}`;
-          let collectedObj = collectedShares[collectedKey];
-          if (!collectedObj) {
-            collectedObj = collectedShares[collectedKey] = {
-              ...sharedObj,
+          let collectedObj =
+            collectedShares[shareKey] ||
+            (collectedShares[shareKey] = { " options": { ...sharedObj } });
+          if (!collectedObj[importerDir]) {
+            collectedObj[importerDir] = {
               _key: shareKey,
-              importee: id,
-              importerDir,
-              importers: [],
-              resolveOptions,
-              interimNm,
+              importees: [],
             };
-            collectedObj.importers.push(importer);
           }
+          collectedObj[importerDir].importees.push([
+            { id, importer: basename(importer), resolveOptions, interimNm },
+          ]);
         }
         if (sharedObj.import === false) {
           return { id, external: true };
@@ -226,8 +220,6 @@ export function init(_shareScope) {
 
   ${CONTAINER_VAR}._mfInit(_shareScope);
 
-  addShare("./used-by-both", import("./src/both/used-by-both.js"));
-  addShare("shared1", import("shared1"));
   addShare("share-a", import("share-a"));
   addShare("share-a", import("./node_modules/.f/_/share-a/1.0.0-fynlocal_h/share-a"));
   addShare("react", import("react"));
@@ -271,13 +263,15 @@ export function get(name, version, scope) {
     // },
 
     banner(chunk) {
+      const deZC = (s: string) => s.replace(/\0/g, "\\0");
+
       const chunkS = !_options.debugging
         ? ""
         : `/*
 exports: ${chunk.exports}
-facadeModuleId: ${chunk.facadeModuleId}
-moduleIds: ${chunk.moduleIds.join("\n  ")}
-dynamicImports: ${chunk.dynamicImports.join("\n  ")}
+facadeModuleId: ${deZC(chunk.facadeModuleId || "")}
+moduleIds: ${chunk.moduleIds.map(deZC).join("\n  ")}
+dynamicImports: ${chunk.dynamicImports.map(deZC).join("\n  ")}
 fileName: ${chunk.fileName}
 imports: ${chunk.imports}
 */
@@ -285,6 +279,17 @@ imports: ${chunk.imports}
       const myId = `_${CONTAINER_SIG}${_options.name}`;
       if (chunk.name === myId) {
         // debug("collected shares", JSON.stringify(collectedShares, null, 2));
+        const byImporterDir: any = {};
+        for (const key in collectedShares) {
+          for (const importerDir in collectedShares[key]) {
+            if (importerDir[0] === " ") continue;
+            if (!byImporterDir[importerDir]) {
+              byImporterDir[importerDir] = [];
+            }
+            byImporterDir[importerDir].push(key);
+          }
+        }
+        collectedShares[" byImporterDir"] = byImporterDir;
         if (_options.debugging) {
           const source = JSON.stringify(collectedShares, null, 2) + "\n";
 

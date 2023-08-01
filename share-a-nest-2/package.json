@@ -1,0 +1,25 @@
+{
+  "name": "share-a-nest-2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.mjs",
+  "homepage": "",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "files": [
+    "src",
+    "lib",
+    "dist"
+  ],
+  "keywords": [],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "dependencies": {
+    "share-a": "^2.0.0"
+  }
+}

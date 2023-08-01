@@ -39,6 +39,7 @@
   },
   "dependencies": {
     "share-a": "^2.0.0",
-    "share-a-nest": "^1.0.0"
+    "share-a-nest": "^1.0.0",
+    "share-a-nest-2": "^1.0.0"
   }
 }
