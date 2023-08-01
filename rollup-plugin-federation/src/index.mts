@@ -85,16 +85,17 @@ export default function federation(_options: any): Plugin {
       }
 
       let nmNameIx = 0;
-      if (isAbsolute(id) && (nmNameIx = id.indexOf(nmPathSig)) > 0) {
-        const fynNmIx = id.indexOf(fynPathSig);
+      if (isAbsolute(id) && (nmNameIx = id.lastIndexOf(nmPathSig)) > 0) {
+        // fyn module path: /node_modules/.f/_/share-a/1.0.0/share-a/index.mjs
+        const fynNmIx = id.lastIndexOf(fynPathSig);
         if (fynNmIx > 0) {
           nmNameIx = fynNmIx + fynPathSig.length;
         } else {
-          nmNameIx = nmPathSig.length;
+          nmNameIx = nmNameIx + nmPathSig.length;
         }
       }
 
-      let nmName = "";
+      let nmName = undefined;
       if (nmNameIx > 0) {
         const parts = id.substring(nmNameIx).split("/");
         if (parts[0][0] === "@") {
@@ -104,7 +105,7 @@ export default function federation(_options: any): Plugin {
           nmName = parts[0];
         }
       }
-      debug("resolveId", nmName, id);
+      debug("resolveId", nmName, id, importer, resolveOptions);
 
       let shareKey;
       const sharedObj =
@@ -222,6 +223,10 @@ export function init(_shareScope) {
 
   addShare("share-a", import("share-a"));
   addShare("share-a", import("./node_modules/.f/_/share-a/1.0.0-fynlocal_h/share-a"));
+  // import("./node_modules/share-a/index.mjs")
+  addShare("share-a", import("./node_modules/share-a/index.mjs"));
+  // import("./node_modules/react-dom/index.js")
+  addShare("react-dom", import("./node_modules/react-dom/index.js"));
   addShare("react", import("react"));
   // container._S => addShare
 ${genAddShareCode()}
