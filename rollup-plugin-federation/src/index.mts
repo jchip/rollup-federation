@@ -3,7 +3,7 @@ import type {
   // RollupOptions, SourceDescription
 } from "rollup";
 // a b import * as path from "path";
-// import { setTimeout as sleep } from "node:timers/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { makeDefer } from "xaa";
 import { pick } from "lodash-es";
 import { dirname, isAbsolute } from "node:path";
@@ -111,6 +111,10 @@ export default function federation(_options: any): Plugin {
     name: "rollup-plugin-module-federation",
 
     resolveId(id: string, importer: string | undefined, resolveOptions) {
+      if (lastModuleWait.isArmed()) {
+        lastModuleWait.reset();
+      }
+
       if (id === filename) {
         return { id: entryId, moduleSideEffects: "no-treeshake" };
       }
@@ -169,13 +173,18 @@ export default function federation(_options: any): Plugin {
               _key: shareKey,
               importerDir,
               allImportees: [],
-              importee: { id, resolveOptions },
+              importee: { id, importer, resolveOptions },
             };
           }
-          byImporters[importerDir].allImportees.push({ id, resolveOptions });
+          byImporters[importerDir].allImportees.push({
+            id,
+            importer,
+            resolveOptions,
+          });
           if (resolveOptions?.custom?.["node-resolve"]?.resolved?.id) {
             byImporters[importerDir].importee = {
               id: resolveOptions?.custom?.["node-resolve"]?.resolved?.id,
+              importer,
               resolveOptions,
             };
           }
@@ -191,7 +200,7 @@ export default function federation(_options: any): Plugin {
     buildStart() {
       debug("buildStart");
       if (!lastModuleWait) {
-        lastModuleWait = makeAlarm(20, async () => {
+        lastModuleWait = makeAlarm(250, async () => {
           const x = Array.from(this.getModuleIds()).filter((id) => {
             const info = this.getModuleInfo(id)!;
             return info.code === null && !info.isExternal;
@@ -221,8 +230,13 @@ export default function federation(_options: any): Plugin {
         lastModuleWait.reset();
       }
 
+      if (lastModuleWait.isArmed()) {
+        lastModuleWait.reset();
+      }
+
       if (id === entryId) {
         try {
+          await sleep(50);
           await lastModuleWait.defer.promise;
           // debug(
           //   "returning plugin entry",
@@ -233,6 +247,7 @@ export default function federation(_options: any): Plugin {
           //   }),
           //   this.getModuleInfo("react")
           // );
+          await sleep(50);
 
           const pickShareKeys = [
             "eager",
@@ -241,20 +256,56 @@ export default function federation(_options: any): Plugin {
             // "requiredVersion",
           ];
 
+          function genExposesCode() {
+            const code = [];
+            const exposes = _options.exposes || {};
+            for (const key in exposes) {
+              code.push(
+                `  // ${exposes[key]}
+  ${CONTAINER_VAR}._E("${key}", import("${exposes[key]}"));`
+              );
+            }
+            return code.join("\n");
+          }
+
           function genAddShareCode() {
+            const added: any = {};
             const code = [];
             for (const key in shared) {
               const shareObj = shared[key];
-              if (shareObj.import === false) {
-                continue;
-              }
+              // if (shareObj.import === false) {
+              //   continue;
+              // }
               const picked = pick(shareObj, pickShareKeys);
               const ver = shareObj.version || "";
               const pickedStr = JSON.stringify(picked);
               const importId = shareObj.import || key;
-              code.push(
-                `  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${ver}", import('${importId}'));`
-              );
+              const collected = collectedShares[importId];
+              if (collected) {
+                const { byImporters } = collected;
+
+                for (const idir in byImporters) {
+                  const { importee } = byImporters[idir];
+                  if (added[importee.id]) {
+                    continue;
+                  }
+                  added[importee.id] = 1;
+                  code.push(
+                    `  // ${importee.id}
+  // ${importee.importer}
+  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${ver}", import('${importee.id}'));`
+                  );
+                }
+              } else {
+                if (added[importId]) {
+                  continue;
+                }
+                added[importId] = 1;
+                code.push(
+                  `  // ${importId}
+  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${ver}", import('${importId}'));`
+                );
+              }
             }
 
             return code.join("\n");
@@ -273,17 +324,10 @@ export function init(_shareScope) {
 
   ${CONTAINER_VAR}._mfInit(_shareScope);
 
-  addShare("share-a", import("share-a"));
-  addShare("share-a", import("./node_modules/.f/_/share-a/1.0.0-fynlocal_h/share-a"));
-  // import("./node_modules/share-a/index.mjs")
-  addShare("share-a", import("./node_modules/share-a/index.mjs"));
-  // import("./node_modules/react-dom/index.js")
-  addShare("react-dom", import("./node_modules/react-dom/index.js"));
-  addShare("react", import("react"));
   // container._S => addShare
 ${genAddShareCode()}
   // container._E => addExpose
-  ${CONTAINER_VAR}._E("./bootstrap", import("./src/bootstrap.js"));
+${genExposesCode()}
 
   return ${CONTAINER_VAR};
 }

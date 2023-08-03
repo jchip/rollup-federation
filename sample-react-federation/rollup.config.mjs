@@ -25,6 +25,10 @@ export default {
       filename: "plugin-entry.js",
       shareScope: "test",
       debugging: true,
+      exposes: {
+        "./bootstrap": "./src/bootstrap",
+        "@foo/pkg/bootstrap": "@foo/pkg/bootstrap",
+      },
       shared: {
         react: {
           eager: true,
