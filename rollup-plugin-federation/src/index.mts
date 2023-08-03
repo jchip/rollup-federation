@@ -6,7 +6,8 @@ import type {
 // import { setTimeout as sleep } from "node:timers/promises";
 import { makeDefer } from "xaa";
 import { pick } from "lodash-es";
-import { dirname, basename, isAbsolute } from "node:path";
+import { dirname, isAbsolute } from "node:path";
+// import { pkgUp } from "pkg-up";
 
 const CONTAINER_SIG = `_mf_container_`;
 const CONTAINER_PREFIX = `\0${CONTAINER_SIG}`;
@@ -67,6 +68,45 @@ export default function federation(_options: any): Plugin {
     ? (...args: any[]) => console.log(...args)
     : () => {};
 
+  /**
+   * From collected shares, we need:
+   *
+   * 1. For each share key, take each importer directory and its importees, If there are multiple
+   *    importees, take the one resolved by the node-resolve plugin.
+   * 2. If importer dir is under node_modules, find the package.json, and read the dependencies
+   *    info for importee.
+   * 3. If importer dir is under project root, lookup project package.json, and read dependencies
+   *    info for importee, unless shared config already has requireVersion.
+   * 4. Map from the importee full name to the full importer id, which we connect to the chunk,
+   *    for which we generate the mapping data.
+   */
+
+  // function analyzeShares(collectedShares: any) {
+  //   const coreShares: any = {};
+  //   for (const key in collectedShares) {
+  //     if (key[0] === " ") continue;
+  //     const shared = collectedShares[key];
+  //     for (const idir in shared) {
+  //       if (idir[0] === " ") continue;
+  //       const { importees } = shared[idir];
+  //       let importee = importees[0];
+  //       const importers = [];
+  //       if (importees.length > 1) {
+  //         for (const itee of shared[idir].importees) {
+  //           importers.push(itee.importer);
+  //           if (itee?.custom?.["node-resolve"]) {
+  //             importee = itee;
+  //           }
+  //         }
+  //       }
+  //       importee.importers = importers;
+  //       coreShares[idir] = importee;
+  //     }
+  //   }
+
+  //   return coreShares;
+  // }
+
   return {
     name: "rollup-plugin-module-federation",
 
@@ -84,8 +124,13 @@ export default function federation(_options: any): Plugin {
         return null;
       }
 
+      let nmName = resolveOptions?.custom?.["node-resolve"]?.importee;
       let nmNameIx = 0;
-      if (isAbsolute(id) && (nmNameIx = id.lastIndexOf(nmPathSig)) > 0) {
+      if (
+        !nmName &&
+        isAbsolute(id) &&
+        (nmNameIx = id.lastIndexOf(nmPathSig)) > 0
+      ) {
         // fyn module path: /node_modules/.f/_/share-a/1.0.0/share-a/index.mjs
         const fynNmIx = id.lastIndexOf(fynPathSig);
         if (fynNmIx > 0) {
@@ -95,8 +140,7 @@ export default function federation(_options: any): Plugin {
         }
       }
 
-      let nmName = undefined;
-      if (nmNameIx > 0) {
+      if (!nmName && nmNameIx > 0) {
         const parts = id.substring(nmNameIx).split("/");
         if (parts[0][0] === "@") {
           // scoped npm package name
@@ -112,21 +156,29 @@ export default function federation(_options: any): Plugin {
         shared[(shareKey = id)] || (nmName && shared[(shareKey = nmName)]);
       if (sharedObj) {
         if (importer !== undefined && importer !== entryId) {
-          const interimNm =
-            importer.includes(nmPathSig) && !id.includes(nmPathSig);
           const importerDir = dirname(importer);
           let collectedObj =
             collectedShares[shareKey] ||
-            (collectedShares[shareKey] = { " options": { ...sharedObj } });
-          if (!collectedObj[importerDir]) {
-            collectedObj[importerDir] = {
+            (collectedShares[shareKey] = {
+              options: { ...sharedObj },
+              byImporters: {},
+            });
+          const byImporters = collectedObj.byImporters;
+          if (!byImporters[importerDir]) {
+            byImporters[importerDir] = {
               _key: shareKey,
-              importees: [],
+              importerDir,
+              allImportees: [],
+              importee: { id, resolveOptions },
             };
           }
-          collectedObj[importerDir].importees.push([
-            { id, importer: basename(importer), resolveOptions, interimNm },
-          ]);
+          byImporters[importerDir].allImportees.push({ id, resolveOptions });
+          if (resolveOptions?.custom?.["node-resolve"]?.resolved?.id) {
+            byImporters[importerDir].importee = {
+              id: resolveOptions?.custom?.["node-resolve"]?.resolved?.id,
+              resolveOptions,
+            };
+          }
         }
         if (sharedObj.import === false) {
           return { id, external: true };
@@ -284,17 +336,17 @@ imports: ${chunk.imports}
       const myId = `_${CONTAINER_SIG}${_options.name}`;
       if (chunk.name === myId) {
         // debug("collected shares", JSON.stringify(collectedShares, null, 2));
-        const byImporterDir: any = {};
-        for (const key in collectedShares) {
-          for (const importerDir in collectedShares[key]) {
-            if (importerDir[0] === " ") continue;
-            if (!byImporterDir[importerDir]) {
-              byImporterDir[importerDir] = [];
-            }
-            byImporterDir[importerDir].push(key);
-          }
-        }
-        collectedShares[" byImporterDir"] = byImporterDir;
+        // const byImporterDir: any = {};
+        // for (const key in collectedShares) {
+        //   for (const importerDir in collectedShares[key]) {
+        //     if (importerDir[0] === " ") continue;
+        //     if (!byImporterDir[importerDir]) {
+        //       byImporterDir[importerDir] = [];
+        //     }
+        //     byImporterDir[importerDir].push(key);
+        //   }
+        // }
+        // collectedShares[" byImporterDir"] = byImporterDir;
         if (_options.debugging) {
           const source = JSON.stringify(collectedShares, null, 2) + "\n";
 
@@ -303,6 +355,17 @@ imports: ${chunk.imports}
             source,
             type: "asset",
           });
+
+          // try {
+          //   this.emitFile({
+          //     fileName: "__core_shares.json",
+          //     source:
+          //       JSON.stringify(analyzeShares(collectedShares), null, 2) + "\n",
+          //     type: "asset",
+          //   });
+          // } catch (e) {
+          //   console.log(e);
+          // }
         }
 
         return `${chunkS}(function (Federation){

@@ -8,7 +8,7 @@ const isProduction = process.env.NODE_ENV === "production";
 
 export default {
   input: ["src/main-a.js", "src/main-b.js", "plugin-entry.js"],
-  preserveSymlinks: true,
+  preserveSymlinks: false,
   plugins: [
     nodeResolve(),
     replace({
