@@ -310,9 +310,9 @@ export default function federation(_options: any): Plugin {
                 for (const idir in byImporters) {
                   const { importee } = byImporters[idir];
                   if (added[importee.id]) {
+                    added[importee.id].all.push(importee);
                     continue;
                   }
-                  added[importee.id] = 1;
 
                   const _info: any[] = [];
                   const reqPkg = getNearestPackageVersion(importId, idir);
@@ -329,19 +329,21 @@ export default function federation(_options: any): Plugin {
                   }
 
                   _info.push(`import("${importee.id}")`);
-                  variants.push({ _info, importee });
+                  variants.push(
+                    (added[importee.id] = { _info, importee, all: [importee] })
+                  );
                 }
                 const _code = [];
                 for (const v of variants) {
-                  _code.push(
-                    `  // ${v.importee.id}\n  // ${
-                      v.importee.importer
-                    }\n  [${v._info.join(", ")}]`
-                  );
+                  const _str = [`    // importee: ${v.importee.id}`];
+                  for (const ii of v.all) {
+                    _str.push(`    // from: ${ii.importer}`);
+                  }
+                  _code.push(`${_str.join("\n")}\n  [${v._info.join(", ")}]`);
                 }
                 code.push(
-                  `  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, [\n  ${_code.join(
-                    ",\n  "
+                  `  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, [\n${_code.join(
+                    ",\n"
                   )}]);`
                 );
               } else {
