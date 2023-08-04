@@ -24,15 +24,15 @@ export default {
       name: "plugin_1",
       filename: "plugin-entry.js",
       shareScope: "test",
-      debugging: true,
+      debugging: false,
       exposes: {
         "./bootstrap": "./src/bootstrap",
         "@foo/pkg/bootstrap": "@foo/pkg/bootstrap",
       },
       shared: {
         react: {
-          eager: true,
-          import: false,
+          // eager: true,
+          // import: false,
           singleton: true,
           requiredVersion: "18",
         },
@@ -47,6 +47,7 @@ export default {
         },
         "@foo/pkg/bootstrap": {
           import: "./src/bootstrap",
+          alias: true,
         },
         "share-no-ref": {},
       },

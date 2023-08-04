@@ -34,15 +34,15 @@
     "@rollup/plugin-node-resolve": "^15.1.0",
     "@rollup/plugin-replace": "^5.0.2",
     "@rollup/plugin-terser": "^0.4.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^18.1.0",
+    "react-dom": "^18.1.0",
     "rollup": "^3.26.2",
     "rollup-plugin-federation": "^1.0.0",
     "typescript": "^5.1.6"
   },
   "dependencies": {
     "@rollup/plugin-node-resolve": "^15.1.0",
-    "share-a": "^2.0.0",
+    "share-a": "2",
     "share-a-nest": "^1.0.0",
     "share-a-nest-2": "^1.0.0",
     "share-no-ref": "^1.21.89"

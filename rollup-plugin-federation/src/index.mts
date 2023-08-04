@@ -5,8 +5,8 @@ import type {
 // a b import * as path from "path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { makeDefer } from "xaa";
-import { pick } from "lodash-es";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { pick, uniq } from "lodash-es";
+import { dirname, isAbsolute, resolve, relative } from "node:path";
 // import { pkgUp } from "pkg-up";
 import { readPackageUpSync } from "read-pkg-up";
 
@@ -190,7 +190,7 @@ export default function federation(_options: any): Plugin {
             };
           }
         }
-        if (sharedObj.import === false) {
+        if (sharedObj.import === false || sharedObj.alias === true) {
           return { id, external: true };
         }
       }
@@ -272,6 +272,10 @@ export default function federation(_options: any): Plugin {
           function getNearestPackageVersion(id: string, cwd?: string) {
             const pkg: any = readPackageUpSync({ cwd });
 
+            if (!pkg) {
+              return { ver: "", path: "", version: "" };
+            }
+
             for (const s of [
               "dependencies",
               "peerDependencies",
@@ -287,7 +291,10 @@ export default function federation(_options: any): Plugin {
                 };
               }
             }
-            return { ver: "", path: "", version: pkg.packageJson.version };
+            return {
+              path: pkg.path,
+              version: pkg.packageJson.version,
+            };
           }
 
           function genAddShareCode() {
@@ -314,9 +321,7 @@ export default function federation(_options: any): Plugin {
                     continue;
                   }
 
-                  const _info: any[] = [];
-                  const reqPkg = getNearestPackageVersion(importId, idir);
-                  _info.push(`"${reqPkg.ver}"`);
+                  const _info: any[] = [`import("${importee.id}")`];
 
                   if (shareObj.import !== false) {
                     const pkgVer = getNearestPackageVersion(
@@ -328,18 +333,33 @@ export default function federation(_options: any): Plugin {
                     _info.push(`""`);
                   }
 
-                  _info.push(`import("${importee.id}")`);
                   variants.push(
                     (added[importee.id] = { _info, importee, all: [importee] })
                   );
                 }
                 const _code = [];
                 for (const v of variants) {
-                  const _str = [`    // importee: ${v.importee.id}`];
+                  const _rItee = relative(process.cwd(), v.importee.id);
+                  const _str = [`    // importee: ${_rItee}`];
+                  const _svStr = [];
                   for (const ii of v.all) {
-                    _str.push(`    // from: ${ii.importer}`);
+                    const iDirName = dirname(
+                      relative(process.cwd(), ii.importer)
+                    );
+                    const reqPkg = getNearestPackageVersion(
+                      importId,
+                      ii.importer
+                    );
+                    if (reqPkg.ver) {
+                      _svStr.push(`["${iDirName}", "${reqPkg.ver}"]`);
+                    }
+
+                    _str.push(`    // from: ${iDirName}`);
                   }
-                  _code.push(`${_str.join("\n")}\n  [${v._info.join(", ")}]`);
+                  const _vInfo = `[${v._info.join(", ")}]`;
+                  _code.push(
+                    `${_str.join("\n")}\n  [${_vInfo},\n  ${_svStr.join(", ")}]`
+                  );
                 }
                 code.push(
                   `  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, [\n${_code.join(
@@ -353,16 +373,12 @@ export default function federation(_options: any): Plugin {
                 added[importId] = 1;
                 let _ver = "";
                 if (shareObj.import !== false) {
-                  try {
-                    const dir = resolve("node_modules", importId);
-                    const pkgVer = getNearestPackageVersion(importId, dir);
-                    _ver = pkgVer.version || shareObj.version || "";
-                  } catch (err) {
-                    debug(err);
-                  }
+                  const dir = resolve("node_modules", importId);
+                  const pkgVer = getNearestPackageVersion(importId, dir);
+                  _ver = pkgVer.version || shareObj.version || "";
                 }
                 code.push(
-                  `  ${CONTAINER_VAR}._S('${key}', ${pickedStr},\n  [\n  // ${importId}\n  ["", "${_ver}", import('${importId}')]]);`
+                  `  ${CONTAINER_VAR}._S('${key}', ${pickedStr},\n  [\n  // ${importId}\n  [[import('${importId}'), "${_ver}"]]]);`
                 );
               }
             }
@@ -486,6 +502,21 @@ var System = ${CONTAINER_VAR};
 
       debug("banner", chunk.name);
 
+      function packModuleIds() {
+        if (!chunk.dynamicImports.length && !chunk.imports.length) {
+          return [];
+        }
+        const ids: any[] = ([] as string[])
+          .concat(chunk.moduleIds, chunk.facadeModuleId as string)
+          .reverse();
+
+        return uniq(
+          ids
+            .filter((id) => id && !/\0/.test(id))
+            .map((id) => dirname(relative(process.cwd(), id)))
+        );
+      }
+
       return `${chunkS}(function (Federation){ 
 //
 var System = Federation._mfBind(
@@ -495,9 +526,8 @@ var System = Federation._mfBind(
     c: '${_options.name}', // federation container name
     s: '${shareScope}', // default scope name
   },
-  // module federation mapping data
-  {
-  }
+  // dirs from ids of modules included in the chunk
+  ${JSON.stringify(packModuleIds())}
 );
 `;
     },
