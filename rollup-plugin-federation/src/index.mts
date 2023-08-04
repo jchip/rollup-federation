@@ -8,6 +8,7 @@ import { makeDefer } from "xaa";
 import { pick } from "lodash-es";
 import { dirname, isAbsolute } from "node:path";
 // import { pkgUp } from "pkg-up";
+import { readPackageUpSync } from "read-pkg-up";
 
 const CONTAINER_SIG = `_mf_container_`;
 const CONTAINER_PREFIX = `\0${CONTAINER_SIG}`;
@@ -253,7 +254,7 @@ export default function federation(_options: any): Plugin {
             "eager",
             "singleton",
             // "version",
-            // "requiredVersion",
+            "requiredVersion",
           ];
 
           function genExposesCode() {
@@ -268,6 +269,27 @@ export default function federation(_options: any): Plugin {
             return code.join("\n");
           }
 
+          function getNearestPackageVersion(id: string, cwd?: string) {
+            const pkg: any = readPackageUpSync({ cwd });
+
+            for (const s of [
+              "dependencies",
+              "peerDependencies",
+              "optionalDependencies",
+              "devDependencies",
+            ]) {
+              if (pkg.packageJson?.[s]?.[id]) {
+                return {
+                  ver: pkg.packageJson[s][id],
+                  path: pkg.path,
+                  section: s,
+                  version: pkg.packageJson.version,
+                };
+              }
+            }
+            return { ver: "", path: "", version: pkg.packageJson.version };
+          }
+
           function genAddShareCode() {
             const added: any = {};
             const code = [];
@@ -277,7 +299,7 @@ export default function federation(_options: any): Plugin {
               //   continue;
               // }
               const picked = pick(shareObj, pickShareKeys);
-              const ver = shareObj.version || "";
+              // const ver = shareObj.requiredVersion || "";
               const pickedStr = JSON.stringify(picked);
               const importId = shareObj.import || key;
               const collected = collectedShares[importId];
@@ -290,10 +312,24 @@ export default function federation(_options: any): Plugin {
                     continue;
                   }
                   added[importee.id] = 1;
+
+                  let _ver = "";
+                  if (shareObj.import !== false) {
+                    const pkgVer = getNearestPackageVersion(
+                      importId,
+                      importee.id
+                    );
+                    _ver = pkgVer.version || shareObj.version || "";
+                  }
+
+                  let _reqVer = "";
+                  const pkgVer = getNearestPackageVersion(importId, idir);
+                  _reqVer = pkgVer.ver || shareObj.requiredVersion;
+
                   code.push(
                     `  // ${importee.id}
   // ${importee.importer}
-  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${ver}", import('${importee.id}'));`
+  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${_reqVer}", "${_ver}", import('${importee.id}'));`
                   );
                 }
               } else {
@@ -301,9 +337,14 @@ export default function federation(_options: any): Plugin {
                   continue;
                 }
                 added[importId] = 1;
+                let _ver = "";
+                if (shareObj.import !== false) {
+                  const pkgVer = getNearestPackageVersion(importId);
+                  _ver = pkgVer.version || shareObj.version || "";
+                }
                 code.push(
                   `  // ${importId}
-  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${ver}", import('${importId}'));`
+  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${_ver}", import('${importId}'));`
                 );
               }
             }
@@ -336,8 +377,10 @@ export function get(name, version, scope) {
   return ${CONTAINER_VAR}._mfGet(name, version, scope);
 }
 `;
-        } catch {
-          return ``;
+        } catch (_err: any) {
+          return `/*
+  ${_err.stack}
+  */`;
         }
       }
 

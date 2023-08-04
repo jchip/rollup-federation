@@ -39,7 +39,7 @@ export default {
         "react-dom": {
           eager: true,
           singleton: true,
-          version: "18.2.0",
+          // version: "18.2.0",
           requiredVersion: "18",
         },
         "share-a": {
