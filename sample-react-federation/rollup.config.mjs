@@ -48,6 +48,7 @@ export default {
         "@foo/pkg/bootstrap": {
           import: "./src/bootstrap",
         },
+        "share-no-ref": {},
       },
     }),
     isProduction && terser(),

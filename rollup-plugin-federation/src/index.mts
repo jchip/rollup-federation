@@ -6,7 +6,7 @@ import type {
 import { setTimeout as sleep } from "node:timers/promises";
 import { makeDefer } from "xaa";
 import { pick } from "lodash-es";
-import { dirname, isAbsolute } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 // import { pkgUp } from "pkg-up";
 import { readPackageUpSync } from "read-pkg-up";
 
@@ -253,7 +253,7 @@ export default function federation(_options: any): Plugin {
           const pickShareKeys = [
             "eager",
             "singleton",
-            // "version",
+            "version",
             "requiredVersion",
           ];
 
@@ -306,6 +306,7 @@ export default function federation(_options: any): Plugin {
               if (collected) {
                 const { byImporters } = collected;
 
+                const variants: any[] = [];
                 for (const idir in byImporters) {
                   const { importee } = byImporters[idir];
                   if (added[importee.id]) {
@@ -313,25 +314,36 @@ export default function federation(_options: any): Plugin {
                   }
                   added[importee.id] = 1;
 
-                  let _ver = "";
+                  const _info: any[] = [];
+                  const reqPkg = getNearestPackageVersion(importId, idir);
+                  _info.push(`"${reqPkg.ver}"`);
+
                   if (shareObj.import !== false) {
                     const pkgVer = getNearestPackageVersion(
                       importId,
                       importee.id
                     );
-                    _ver = pkgVer.version || shareObj.version || "";
+                    _info.push(`"${pkgVer.version}"`);
+                  } else {
+                    _info.push(`""`);
                   }
 
-                  let _reqVer = "";
-                  const pkgVer = getNearestPackageVersion(importId, idir);
-                  _reqVer = pkgVer.ver || shareObj.requiredVersion;
-
-                  code.push(
-                    `  // ${importee.id}
-  // ${importee.importer}
-  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${_reqVer}", "${_ver}", import('${importee.id}'));`
+                  _info.push(`import("${importee.id}")`);
+                  variants.push({ _info, importee });
+                }
+                const _code = [];
+                for (const v of variants) {
+                  _code.push(
+                    `  // ${v.importee.id}\n  // ${
+                      v.importee.importer
+                    }\n  [${v._info.join(", ")}]`
                   );
                 }
+                code.push(
+                  `  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, [\n  ${_code.join(
+                    ",\n  "
+                  )}]);`
+                );
               } else {
                 if (added[importId]) {
                   continue;
@@ -339,12 +351,16 @@ export default function federation(_options: any): Plugin {
                 added[importId] = 1;
                 let _ver = "";
                 if (shareObj.import !== false) {
-                  const pkgVer = getNearestPackageVersion(importId);
-                  _ver = pkgVer.version || shareObj.version || "";
+                  try {
+                    const dir = resolve("node_modules", importId);
+                    const pkgVer = getNearestPackageVersion(importId, dir);
+                    _ver = pkgVer.version || shareObj.version || "";
+                  } catch (err) {
+                    debug(err);
+                  }
                 }
                 code.push(
-                  `  // ${importId}
-  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, "${_ver}", import('${importId}'));`
+                  `  ${CONTAINER_VAR}._S('${key}', ${pickedStr},\n  [\n  // ${importId}\n  ["", "${_ver}", import('${importId}')]]);`
                 );
               }
             }

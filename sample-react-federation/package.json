@@ -1,6 +1,6 @@
 {
   "name": "react-federation",
-  "version": "1.0.0",
+  "version": "1.31.42",
   "description": "",
   "main": "index.js",
   "homepage": "",
@@ -44,6 +44,7 @@
     "@rollup/plugin-node-resolve": "^15.1.0",
     "share-a": "^2.0.0",
     "share-a-nest": "^1.0.0",
-    "share-a-nest-2": "^1.0.0"
+    "share-a-nest-2": "^1.0.0",
+    "share-no-ref": "^1.21.89"
   }
 }
