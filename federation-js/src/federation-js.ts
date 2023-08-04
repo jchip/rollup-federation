@@ -3,11 +3,23 @@
  */
 type MFMapping = {
   name: string;
-  id: string;
+  fileName: string;
+  container: string;
+  scopeName: string;
   mapData: any;
   register: (dep: any, declare: any, metas: any) => unknown;
 };
 
+type BindOptions = {
+  /** chunk name */
+  n: string;
+  /** chunk filename */
+  f: string;
+  /** federation container name */
+  c: string;
+  /** default scope name */
+  s: string;
+};
 /**
  *
  */
@@ -45,7 +57,7 @@ class FederationJS {
    * @returns
    */
   private _mfReg(dep: any, declare: any, metas: any, mapping: MFMapping) {
-    return this.System.register(mapping.id, dep, declare, metas);
+    return this.System.register(mapping.fileName, dep, declare, metas);
   }
 
   /**
@@ -55,11 +67,13 @@ class FederationJS {
    * @param mapData
    * @returns
    */
-  _mfBind(name: string, id: string, mapData: any): MFMapping {
+  _mfBind(options: BindOptions, mapData: any): MFMapping {
     const _F = this;
     return {
-      id,
-      name,
+      name: options.n,
+      fileName: options.f,
+      container: options.c,
+      scopeName: options.s,
       mapData,
       register(dep, declare, metas) {
         return _F._mfReg(dep, declare, metas, this);
@@ -186,3 +200,5 @@ class Container {
     return this.Fed._mfGetS(name, scope || this.scope, version);
   }
 }
+
+globalThis.Federation = new FederationJS(globalThis.System);

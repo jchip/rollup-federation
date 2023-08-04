@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "jsx": "react",
+    "lib": ["dom", "es2015"],
+    "module": "ES6",
+    "esModuleInterop": false,
+    "importHelpers": false,
+    "target": "ES2015",
+    "preserveConstEnums": true,
+    "sourceMap": true,
+    "declaration": true,
+    "types": ["node"],
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitReturns": true,
+    "alwaysStrict": true,
+    "strictFunctionTypes": true,
+    "moduleResolution": "nodenext"
+  },
+  "include": ["src"]
+}

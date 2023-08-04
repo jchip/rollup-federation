@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <title>Rollup code-splitting demo</title>
+
+    <link rel="stylesheet" href="styles.css" />
+    <script src="/systemjs/s.js"></script>
+    <script src="/systemjs/extras/named-register.js"></script>
+    <script src="/federationjs/dist/federation-js.js"></script>
+    <script src="/react/dist/plugin-entry.js"></script>
+    <script src="/react/dist/main-a.js"></script>
+  </head>
+  <body>
+    <h1>Rollup code-splitting demo</h1>
+
+    <p>
+      <a href="https://github.com/rollup/rollup-starter-code-splitting"
+        >See the source code on GitHub</a
+      >
+    </p>
+
+    <div id="a">
+      <div data-used-by="a"></div>
+      <div data-used-by="both"></div>
+    </div>
+
+    <div id="b">
+      <div data-used-by="b"></div>
+      <div data-used-by="both"></div>
+    </div>
+  </body>
+</html>

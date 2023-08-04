@@ -25,6 +25,8 @@
     }
   },
   "dependencies": {
+    "@jchip/redbird": "^1.3.0",
+    "chalker": "^1.2.0",
     "fynpo": "^1.1.43"
   }
 }
