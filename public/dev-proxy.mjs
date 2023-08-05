@@ -15,7 +15,7 @@ startDevProxy([
     {
       host: "",
       protocol: "file",
-      path: Path.join(rootDir, "federation-js/node_modules/systemjs/dist"),
+      path: Path.join(rootDir, "/systemjs/dist"),
       port: 0,
     },
   ],

@@ -1,7 +1,7 @@
 /**
  *
  */
-type MFMapping = {
+type MFBinding = {
   name: string;
   fileName: string;
   container: string;
@@ -26,14 +26,44 @@ type BindOptions = {
 class FederationJS {
   private System: any;
   private $C: Record<string, Container>;
+  private $B: Record<string, MFBinding>;
+  private sysResolve: any;
+  private sysGetRegister: any;
 
   /**
    *
    * @param System
    */
   constructor(System?: any) {
-    this.System = System || globalThis.FileSystem;
+    const S = (this.System = System || globalThis.FileSystem);
+    const systemJSPrototype = S.constructor.prototype;
+    this.sysResolve = systemJSPrototype.resolve;
+    this.sysGetRegister = systemJSPrototype.getRegister;
+    systemJSPrototype.resolve = (
+      id: string,
+      parentURL: string,
+      meta: unknown
+    ) => {
+      const ppts = parentURL && parentURL.split("/");
+      const parentFilename = ppts && ppts[ppts.length - 1];
+      if (parentFilename) {
+        const binded = this.$B[parentFilename];
+        if (binded) {
+          //
+          const container = this.$C[`__mf_container_${binded.container}`];
+          console.log(`container`, container);
+        }
+        console.log("resolve binded", binded);
+      }
+      return this.sysResolve.call(S, id, parentURL, meta);
+    };
+
+    // systemJSPrototype.getRegister = (url) => {
+    //   const x = this.sysGetRegister.call(S, url);
+    //   return x;
+    // };
     this.$C = Object.create(null);
+    this.$B = Object.create(null);
   }
 
   /**
@@ -53,11 +83,11 @@ class FederationJS {
    * @param dep
    * @param declare
    * @param metas
-   * @param mapping
+   * @param binding
    * @returns
    */
-  private _mfReg(dep: any, declare: any, metas: any, mapping: MFMapping) {
-    return this.System.register(mapping.fileName, dep, declare, metas);
+  private _mfReg(dep: any, declare: any, metas: any, binding: MFBinding) {
+    return this.System.register(binding.fileName, dep, declare, metas);
   }
 
   /**
@@ -67,9 +97,13 @@ class FederationJS {
    * @param mapData
    * @returns
    */
-  _mfBind(options: BindOptions, mapData: any): MFMapping {
+  _mfBind(options: BindOptions, mapData: any): MFBinding {
     const _F = this;
-    return {
+    if (_F.$B[options.f]) {
+      return _F.$B[options.f];
+    }
+
+    const binded = {
       name: options.n,
       fileName: options.f,
       container: options.c,
@@ -79,6 +113,8 @@ class FederationJS {
         return _F._mfReg(dep, declare, metas, this);
       },
     };
+    _F.$B[options.f] = binded;
+    return binded;
   }
 
   /**
@@ -88,11 +124,12 @@ class FederationJS {
    * @returns
    */
   _mfContainer(name: string, scopeName: string) {
-    if (this.$C[name]) {
-      return this.$C[name];
+    const id = `__mf_container_${name}`;
+    if (this.$C[id]) {
+      return this.$C[id];
     }
 
-    const container = (this.$C[name] = new Container(name, scopeName, this));
+    const container = (this.$C[id] = new Container(id, scopeName, this));
 
     return container;
   }
@@ -151,9 +188,9 @@ class Container {
    * @param name
    * @param scopeName
    */
-  constructor(name: string, scopeName: string, Federation?: any) {
+  constructor(id: string, scopeName: string, Federation?: any) {
     this.scope = scopeName;
-    this.id = `__mf_container_${name}`;
+    this.id = id;
     this.Fed = Federation || globalThis.Federation;
   }
 
