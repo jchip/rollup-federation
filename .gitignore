@@ -12,3 +12,4 @@ dist
 .fynpo
 plugins
 systemjs
+currentExecutingScript

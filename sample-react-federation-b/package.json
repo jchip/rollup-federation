@@ -1,0 +1,50 @@
+{
+  "name": "sample-react-federation-b",
+  "version": "2.13.71",
+  "description": "",
+  "main": "index.js",
+  "homepage": "",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "rollup -c",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "files": [
+    "src",
+    "lib",
+    "dist"
+  ],
+  "keywords": [],
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "fyn": {
+    "devDependencies": {
+      "rollup": "../rollup",
+      "rollup-plugin-federation": "../rollup-plugin-federation"
+    },
+    "dependencies": {
+      "@rollup/plugin-node-resolve": "../plugins/packages/node-resolve"
+    }
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.3",
+    "@rollup/plugin-node-resolve": "^15.1.0",
+    "@rollup/plugin-replace": "^5.0.2",
+    "@rollup/plugin-terser": "^0.4.3",
+    "react": "^18.1.0",
+    "react-dom": "^18.1.0",
+    "rollup": "^3.26.2",
+    "rollup-plugin-federation": "^1.0.0",
+    "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "@rollup/plugin-node-resolve": "^15.1.0",
+    "share-a": "2",
+    "share-a-nest": "^1.0.0",
+    "share-a-nest-2": "^1.0.0",
+    "share-no-ref": "^1.21.89"
+  }
+}

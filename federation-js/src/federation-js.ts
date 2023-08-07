@@ -286,10 +286,14 @@ class FederationJS {
     let fileName = options.f;
     // TODO: detect entry bundle
     if (fileName.includes("main-")) {
-      fileName = "__" + options.c + "_" + fileName;
+      fileName = "__mf_entry_" + options.c + "_" + fileName;
       console.log("main fileName", fileName, options);
     }
     if (_F.$B[fileName]) {
+      console.warn(
+        `module fedeeration initial binding already exist for fileName`,
+        fileName
+      );
       return _F.$B[fileName];
     }
 

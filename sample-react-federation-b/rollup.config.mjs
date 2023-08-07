@@ -7,7 +7,7 @@ import replace from "@rollup/plugin-replace";
 const isProduction = process.env.NODE_ENV === "production";
 
 export default {
-  input: ["src/main-a.js", "src/main-b.js", "src/load-a.js", "plugin-entry.js"],
+  input: ["src/main-a.js", "src/main-b.js", "src/load-b.js", "plugin-entry.js"],
   preserveSymlinks: false,
   plugins: [
     nodeResolve(),
@@ -21,7 +21,7 @@ export default {
       transformMixedEsModules: true,
     }),
     federation({
-      name: "plugin_1",
+      name: "plugin_2",
       filename: "plugin-entry.js",
       shareScope: "test",
       debugging: false,

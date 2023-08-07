@@ -397,14 +397,14 @@ export function init(_shareScope) {
     }
   };
 
-  ${CONTAINER_VAR}._mfInit(_shareScope);
+  var _ss = ${CONTAINER_VAR}._mfInit(_shareScope);
 
   // container._S => addShare
 ${genAddShareCode()}
   // container._E => addExpose
 ${genExposesCode()}
 
-  return ${CONTAINER_VAR};
+  return _ss;
 }
 
 export function get(name, version, scope) {

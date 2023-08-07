@@ -11,6 +11,16 @@ const rootDir = Path.join(__dirname, "..");
 startDevProxy([
   [{ path: "/" }, { host: "", protocol: "file", path: __dirname, port: 0 }],
   [
+    { path: "/currentExecutingScript" },
+    {
+      host: "",
+      protocol: "file",
+      path: Path.join(rootDir, "/currentExecutingScript/dist"),
+      port: 0,
+    },
+  ],
+
+  [
     { path: "/systemjs" },
     {
       host: "",
@@ -34,6 +44,15 @@ startDevProxy([
       host: "",
       protocol: "file",
       path: Path.join(rootDir, "sample-react-federation"),
+      port: 0,
+    },
+  ],
+  [
+    { path: "/react-b" },
+    {
+      host: "",
+      protocol: "file",
+      path: Path.join(rootDir, "sample-react-federation-b"),
       port: 0,
     },
   ],
