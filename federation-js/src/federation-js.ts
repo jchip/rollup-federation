@@ -24,6 +24,7 @@ type BindOptions = {
 type ShareInfo = {
   id: string;
   loaded: 1 | 0;
+  url?: string;
 };
 
 type ShareMeta = Record<string, ShareInfo>;
@@ -97,26 +98,106 @@ class FederationJS {
       meta: unknown
     ) {
       if (federation.idToUrlMap[id]) {
-        return federation.idToUrlMap[id];
+        const r = federation.idToUrlMap[id];
+        console.log("resolve with id to url", id, r);
+        return r;
       }
 
       const parentId = federation.urlToIdMap[parentURL];
-      if (parentId) {
-        const binded = federation.$B[parentId];
-        if (binded) {
-          const container = federation.$C[`__mf_container_${binded.container}`];
-          console.log(
-            "resolve id's bind parent",
-            binded,
-            `\ncontainer`,
-            container
-          );
+      const binded = parentId && federation.$B[parentId];
+      const container =
+        binded && federation.$C[`__mf_container_${binded.container}`];
+      if (container) {
+        console.log(
+          "resolve id's bind parent",
+          binded,
+          `\ncontainer`,
+          container
+        );
+        // time to federate
+        // 1. get original import name from id
+        console.log("federation - get original import name from id", id);
+        const _SS = container.$SS;
+        let importName = "";
+        let importVersion = "";
+        for (const name in _SS) {
+          const _sm = _SS[name];
+          for (const version in _sm) {
+            if (id === _sm[version].id) {
+              console.log(
+                "found import name",
+                name,
+                "version",
+                version,
+                "for id",
+                id
+              );
+              importName = name;
+              importVersion = version;
+              break;
+            }
+          }
+        }
+        if (!importName) {
+          console.log("no import name found for id", id, "no federation");
+        } else {
+          // 2. get required version from container.$rvm and binded.mapData
+          let requiredVersion = "";
+          const _map = container.$rvm[importName];
+          if (_map) {
+            for (const _src of binded.mapData) {
+              if (_map[_src]) {
+                requiredVersion = _map[_src];
+                console.log(
+                  "found required version for import name",
+                  importName,
+                  requiredVersion
+                );
+                break;
+              }
+            }
+          }
+          // 3. match existing loaded module from shared info
+
+          // TODO: semver match, for now just use hard version
+          const sharedMeta =
+            federation.$SS[container.scope][importName][importVersion];
+
+          if (sharedMeta && sharedMeta.url) {
+            console.log("found shared", importName, "url", sharedMeta.url);
+            if (!federation.idToUrlMap[id]) {
+              federation.idToUrlMap[id] = sharedMeta.url;
+            }
+            if (!federation.urlToIdMap[sharedMeta.url]) {
+              federation.urlToIdMap[sharedMeta.url] = id;
+            }
+            return sharedMeta.url;
+          } else {
+            // 4. if no match, load it
+            const r = federation.sysResolve.call(this, id, parentURL, meta);
+            if (r !== id && !federation.urlToIdMap[r]) {
+              console.log(
+                "shared",
+                importName,
+                "- adding id to url map",
+                id,
+                r
+              );
+              if (id[0] === "." && id[1] === "/") {
+                federation.idToUrlMap[id.slice(2)] = r;
+              }
+              federation.idToUrlMap[id] = r;
+              federation.urlToIdMap[r] = id;
+            }
+            sharedMeta.url = r;
+            return r;
+          }
         }
       }
 
       const r = federation.sysResolve.call(this, id, parentURL, meta);
       if (r !== id && !federation.urlToIdMap[r]) {
-        console.log("adding id to url map", id, r);
+        console.log("non-shared adding id to url map", id, r);
         if (id[0] === "." && id[1] === "/") {
           federation.idToUrlMap[id.slice(2)] = r;
         }
@@ -202,21 +283,27 @@ class FederationJS {
    */
   _mfBind(options: BindOptions, mapData: any): MFBinding {
     const _F = this;
-    if (_F.$B[options.f]) {
-      return _F.$B[options.f];
+    let fileName = options.f;
+    // TODO: detect entry bundle
+    if (fileName.includes("main-")) {
+      fileName = "__" + options.c + "_" + fileName;
+      console.log("main fileName", fileName, options);
+    }
+    if (_F.$B[fileName]) {
+      return _F.$B[fileName];
     }
 
     const binded = {
       name: options.n,
-      fileName: options.f,
+      fileName: fileName,
       container: options.c,
       scopeName: options.s,
       mapData,
       register(dep, declare, metas) {
-        return _F.register(this.fileName, dep, declare, metas);
+        return _F.register(fileName, dep, declare, metas);
       },
     };
-    _F.$B[options.f] = binded;
+    _F.$B[fileName] = binded;
     return binded;
   }
 
