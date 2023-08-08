@@ -351,7 +351,8 @@ export default function federation(_options: any): Plugin {
                       ii.importer
                     );
                     if (reqPkg.ver) {
-                      _svStr.push(`["${iDirName}", "${reqPkg.ver}"]`);
+                      const rIDir = iDirName.replace(/node_modules/g, "%nm");
+                      _svStr.push(`["${rIDir}", "${reqPkg.ver}"]`);
                     }
 
                     _str.push(`    // from: ${iDirName}`);
@@ -452,6 +453,7 @@ moduleIds: ${chunk.moduleIds.map(deZC).join("\n  ")}
 dynamicImports: ${chunk.dynamicImports.map(deZC).join("\n  ")}
 fileName: ${chunk.fileName}
 imports: ${chunk.imports}
+isEntry: ${chunk.isEntry}
 */
 `;
       const myId = `_${CONTAINER_SIG}${_options.name}`;
@@ -513,7 +515,12 @@ var System = ${CONTAINER_VAR};
         return uniq(
           ids
             .filter((id) => id && !/\0/.test(id))
-            .map((id) => dirname(relative(process.cwd(), id)))
+            .map((id) =>
+              dirname(relative(process.cwd(), id)).replace(
+                /node_modules/g,
+                "%nm"
+              )
+            )
         );
       }
 
@@ -525,6 +532,7 @@ var System = Federation._mfBind(
     f: '${chunk.fileName}', // chunk fileName
     c: '${_options.name}', // federation container name
     s: '${shareScope}', // default scope name
+    e: ${chunk.isEntry} // chunk isEntry
   },
   // dirs from ids of modules included in the chunk
   ${JSON.stringify(packModuleIds())}

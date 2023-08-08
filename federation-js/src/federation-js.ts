@@ -3,6 +3,7 @@
  */
 type MFBinding = {
   name: string;
+  id?: string;
   fileName: string;
   container: string;
   scopeName: string;
@@ -19,6 +20,8 @@ type BindOptions = {
   c: string;
   /** default scope name */
   s: string;
+  /** isEntry */
+  e: boolean;
 };
 
 type ShareInfo = {
@@ -97,13 +100,13 @@ class FederationJS {
       parentURL: string,
       meta: unknown
     ) {
-      if (federation.idToUrlMap[id]) {
-        const r = federation.idToUrlMap[id];
-        console.log("resolve with id to url", id, r);
-        return r;
+      const url = federation.getUrlFromId(id);
+      if (url) {
+        console.log("resolve with id to url", id, url);
+        return url;
       }
 
-      const parentId = federation.urlToIdMap[parentURL];
+      const parentId = federation.getIdFromUrl(parentURL);
       const binded = parentId && federation.$B[parentId];
       const container =
         binded && federation.$C[`__mf_container_${binded.container}`];
@@ -165,30 +168,12 @@ class FederationJS {
 
           if (sharedMeta && sharedMeta.url) {
             console.log("found shared", importName, "url", sharedMeta.url);
-            if (!federation.idToUrlMap[id]) {
-              federation.idToUrlMap[id] = sharedMeta.url;
-            }
-            if (!federation.urlToIdMap[sharedMeta.url]) {
-              federation.urlToIdMap[sharedMeta.url] = id;
-            }
+            federation.addIdUrlMap(id, sharedMeta.url);
             return sharedMeta.url;
           } else {
             // 4. if no match, load it
             const r = federation.sysResolve.call(this, id, parentURL, meta);
-            if (r !== id && !federation.urlToIdMap[r]) {
-              console.log(
-                "shared",
-                importName,
-                "- adding id to url map",
-                id,
-                r
-              );
-              if (id[0] === "." && id[1] === "/") {
-                federation.idToUrlMap[id.slice(2)] = r;
-              }
-              federation.idToUrlMap[id] = r;
-              federation.urlToIdMap[r] = id;
-            }
+            federation.addIdUrlMap(id, r);
             sharedMeta.url = r;
             return r;
           }
@@ -196,14 +181,7 @@ class FederationJS {
       }
 
       const r = federation.sysResolve.call(this, id, parentURL, meta);
-      if (r !== id && !federation.urlToIdMap[r]) {
-        console.log("non-shared adding id to url map", id, r);
-        if (id[0] === "." && id[1] === "/") {
-          federation.idToUrlMap[id.slice(2)] = r;
-        }
-        federation.idToUrlMap[id] = r;
-        federation.urlToIdMap[r] = id;
-      }
+      federation.addIdUrlMap(id, r);
 
       return r;
     };
@@ -214,7 +192,7 @@ class FederationJS {
       parentUrl: string,
       meta: any
     ) {
-      const url = federation.idToUrlMap[id];
+      const url = federation.getUrlFromId(id);
       if (url) {
         return _import.call(this, url, parentUrl, meta);
       }
@@ -229,6 +207,46 @@ class FederationJS {
   /**
    *
    * @param id
+   * @returns
+   */
+  private getUrlFromId(id: string): string {
+    if (id && id[0] === "." && id[1] === "/") {
+      return this.idToUrlMap[id.slice(2)];
+    }
+    return this.idToUrlMap[id];
+  }
+
+  /**
+   *
+   * @param url
+   * @returns
+   */
+  private getIdFromUrl(url: string): string {
+    return this.urlToIdMap[url];
+  }
+
+  /**
+   *
+   * @param id
+   * @param url
+   */
+  private addIdUrlMap(id: string, url: string): boolean {
+    if (url !== id && !this.urlToIdMap[url]) {
+      if (id && id[0] === "." && id[1] === "/") {
+        this.idToUrlMap[id.slice(2)] = url;
+      } else {
+        this.idToUrlMap[id] = url;
+      }
+
+      this.urlToIdMap[url] = id;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   *
+   * @param id
    * @param parentUrl
    * @param meta
    * @returns
@@ -237,15 +255,12 @@ class FederationJS {
     return this.System.import(id, parentUrl, meta);
   }
 
-  /**
-   *
-   * @param id
-   * @param dep
-   * @param declare
-   * @param metas
-   * @returns
-   */
-  register(id: any, deps: any, declare: any, meta: any): unknown {
+  private register_currentExecutingScriptAnchor(
+    id: any,
+    deps: any,
+    declare: any,
+    meta: any
+  ): unknown {
     if (typeof id !== "string") {
       console.log("no name for register");
       return this.sysRegister.apply(this.System, arguments);
@@ -265,13 +280,23 @@ class FederationJS {
 
         const url = currentScr.src;
 
-        this.idToUrlMap[id] = url;
-        this.urlToIdMap[url] = id;
+        this.addIdUrlMap(id, url);
       } else {
         console.log("no script url detected, register name:", id);
       }
     }
     return this.sysRegister.apply(this.System, [deps, declare, meta]);
+  }
+  /**
+   *
+   * @param id
+   * @param dep
+   * @param declare
+   * @param metas
+   * @returns
+   */
+  register(id: any, deps: any, declare: any, meta: any): unknown {
+    return this.register_currentExecutingScriptAnchor(id, deps, declare, meta);
   }
 
   /**
@@ -283,31 +308,35 @@ class FederationJS {
    */
   _mfBind(options: BindOptions, mapData: any): MFBinding {
     const _F = this;
-    let fileName = options.f;
-    // TODO: detect entry bundle
-    if (fileName.includes("main-")) {
-      fileName = "__mf_entry_" + options.c + "_" + fileName;
-      console.log("main fileName", fileName, options);
+    let id = options.f;
+    // entry bundle
+    if (options.e) {
+      id = "__mf_entry_" + options.c + "_" + id;
+      console.log("entry module id", id, options);
     }
-    if (_F.$B[fileName]) {
+    if (_F.$B[id]) {
       console.warn(
-        `module fedeeration initial binding already exist for fileName`,
-        fileName
+        `module fedeeration initial binding already exist for id`,
+        id
       );
-      return _F.$B[fileName];
+      return _F.$B[id];
     }
 
-    const binded = {
+    const binded: MFBinding = {
       name: options.n,
-      fileName: fileName,
+      fileName: options.f,
       container: options.c,
       scopeName: options.s,
       mapData,
       register(dep, declare, metas) {
-        return _F.register(fileName, dep, declare, metas);
+        return _F.register(id, dep, declare, metas);
       },
     };
-    _F.$B[fileName] = binded;
+    if (id !== options.f) {
+      binded.id = id;
+    }
+
+    _F.$B[id] = binded;
     return binded;
   }
 
