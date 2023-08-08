@@ -27,29 +27,67 @@ type BindOptions = {
 type ShareSource = {
   id: string;
   container: string;
+  loaded?: boolean;
 };
 
 type ShareInfo = {
-  source: ShareSource[];
-  loaded: 1 | 0;
+  sources: ShareSource[];
   url?: string;
+  srcIdx?: number;
 };
 
-type ShareMeta = Record<string, ShareInfo>;
+type ShareScope = {
+  [shareKey: string]: {
+    [version: string]: ShareInfo;
+  };
+};
 
 /**
  * {
  *   [scope name]: { // ShareScope
  *     [share key]: { // ShareMeta
  *       [version]: {  // ShareInfo
- *         id: "",
- *         loaded: 0
+ *         sources: [{id: "", container: ""}],
+ *         url: "",
+ *         srcIdx: 0
  *       }
  *     }
  *   }
  * }
  */
-type SharedScope = Record<string, ShareMeta>;
+type ShareStore = Record<string, ShareScope>;
+
+/**
+ * {
+ *   [share key]: {
+ *     options: {},
+ *     rvm: {},
+ *     versions: {
+ *       [version]: {
+ *         id: ""
+ *       }
+ *     }
+ *   }
+ * }
+ */
+type ShareConfig = {
+  [key: string]: {
+    options: Record<string, any>;
+    /**
+     * required version mapping
+     * Map from importer's dir to the version they required from the
+     * nearest package.json dependencies.
+     */
+    rvm: {
+      [importerDir: string]: string;
+    };
+    versions: {
+      [version: string]: {
+        id: string;
+      };
+    };
+  };
+};
 
 const hasDocument = typeof document !== "undefined";
 
@@ -97,7 +135,7 @@ class FederationJS {
   private System: any;
   private $C: Record<string, Container>;
   private $B: Record<string, MFBinding>;
-  private $SS: Record<string, SharedScope>;
+  private $SS: ShareStore;
   private sysResolve: any;
   private sysRegister: any;
   private idToUrlMap: Record<string, string>;
@@ -142,19 +180,20 @@ class FederationJS {
         // 1. get original import name from id
 
         console.debug("federation - get original import name from id", id);
-        const _SS = container.$SS;
+        const _SS = container.$SC;
         let importName = "";
         let importVersion = "";
 
         if (_SS[id]) {
           // import is using original import id
           importName = id;
-          importVersion = Object.keys(_SS[id])[0];
+          importVersion = Object.keys(_SS[id].versions)[0];
         } else {
           for (const name in _SS) {
             const _sm = _SS[name];
-            for (const version in _sm) {
-              if (id === _sm[version].source[0].id) {
+            for (const version in _sm.versions) {
+              const _si = _sm.versions[version];
+              if (id === _si.id) {
                 console.debug(
                   "found import name",
                   name,
@@ -174,9 +213,9 @@ class FederationJS {
         if (!importName) {
           console.debug("no import name found for id", id, "no federation");
         } else {
-          // 2. get required version from container.$rvm and binded.mapData
+          // 2. get required version from container.$SC.rvm and binded.mapData
           let requiredVersion = "";
-          const _map = container.$rvm[importName];
+          const _map = container.$SC[importName].rvm;
           if (_map) {
             for (const _src of binded.mapData) {
               if (_map[_src]) {
@@ -211,13 +250,20 @@ class FederationJS {
               return shareInfo.url;
             }
 
-            // The container registered the share info, so the id is
-            // relative to the container's URL.
-            if (shareInfo.source.length > 0) {
+            if (shareInfo.sources.length > 0) {
+              let ix = 0;
+              if (shareInfo.sources.length > 1) {
+                ix = Math.floor(Math.random() * shareInfo.sources.length);
+              }
+              const source = shareInfo.sources[ix];
+              shareInfo.srcIdx = ix;
+              source.loaded = true;
+              // The container registered the share info, so the id is
+              // relative to the container's URL.
               shareParentUrl = federation.getUrlFromId(
-                containerNameToId(shareInfo.source[0].container)
+                containerNameToId(source.container)
               );
-              shareId = shareInfo.source[0].id;
+              shareId = source.id;
             }
           }
 
@@ -233,7 +279,6 @@ class FederationJS {
           }
 
           if (shareInfo) {
-            shareInfo.loaded = 1;
             shareInfo.url = r;
           }
           return r;
@@ -466,15 +511,14 @@ class FederationJS {
     const _ss = this.$SS[scope];
     const _sm = _ss[key] || (_ss[key] = Object.create(null));
     const _si = _sm[version] || (_sm[version] = Object.create(null));
-    if (_si.source) {
+    if (_si.sources) {
       console.debug(
         `trying to add share from ` + container + ", but it already exist:",
         scope + ":" + key + ":" + version
       );
-      _si.source.push({ id, container });
+      _si.sources.push({ id, container });
     } else {
-      _si.source = [{ id, container }];
-      _si.loaded = 0;
+      _si.sources = [{ id, container }];
     }
   }
 
@@ -506,10 +550,9 @@ class Container {
    */
   id: string;
   scope: string;
-  $SS: Record<string, ShareMeta>;
-  // Importer Dir To required version mapping
-  $rvm: Record<string, any>;
-  shareScope: Record<string, ShareMeta>;
+  $SC: ShareConfig;
+
+  shareScope: ShareScope;
   /**
    * The FederationJS runtime
    */
@@ -524,8 +567,8 @@ class Container {
     this.id = id;
     this.name = name;
     this.Fed = Federation || globalThis.Federation;
-    this.$rvm = Object.create(null);
-    this.$SS = Object.create(null);
+
+    this.$SC = Object.create(null);
   }
 
   /**
@@ -542,24 +585,25 @@ class Container {
   /**
    * add share
    */
-  _S(key: string, config: any, shared: any): void {
-    const scope = config.shareScope || this.scope;
-    const _sm = this.$SS[key] || (this.$SS[key] = Object.create(null));
+  _S(key: string, options: any, shared: any): void {
+    const scope = options.shareScope || this.scope;
+    let _sm = this.$SC[key];
+    if (!_sm) {
+      _sm = this.$SC[key] = { options, rvm: {}, versions: {} };
+    }
     for (const _s of shared) {
       // first entry is chunk bundle and version
       const [_bundle, version] = _s[0];
       if (version) {
-        const _si: ShareInfo = (_sm[version] = Object.create(null));
-        _si.source = [{ id: _bundle.id, container: this.name }];
-        _si.loaded = 0;
+        _sm.versions[version] = { id: _bundle.id };
         // import === false means consume only shared, do not add it
         // to the global share scope since this container cannot provide it
-        if (config.import !== false) {
+        if (options.import !== false) {
           this.Fed._S(scope, key, version, _bundle.id, this.name);
         }
       }
       const maps = _s.slice(1);
-      const _rvm = this.$rvm[key] || (this.$rvm[key] = Object.create(null));
+      const _rvm = this.$SC[key].rvm;
       for (const _m of maps) {
         _rvm[_m[0]] = _m[1];
       }
