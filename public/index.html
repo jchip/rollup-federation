@@ -10,26 +10,29 @@
     <link rel="stylesheet" href="styles.css" />
     <script src="/currentExecutingScript/currentExecutingScript.js"></script>
     <script src="/systemjs/s.js"></script>
-    <!-- <script src="/systemjs/extras/named-register.js"></script> -->
     <script src="/federationjs/dist/federation-js.js"></script>
 
-    <script src="/react/dist/plugin-entry.js"></script>
-    <script src="/react-b/dist/plugin-entry.js"></script>
+    <!-- <script src="/react/dist/plugin-entry.js"></script>
+    <script src="/react-b/dist/plugin-entry.js"></script> -->
 
     <script>
       (async function () {
-        console.log("importing plugin containers");
+        // console.log("importing plugin containers");
         const [a, b] = await Promise.all([
-          System.import("__mf_container_plugin_1"),
-          System.import("__mf_container_plugin_2"),
+          Federation.import("/react/dist/plugin-entry.js"),
+          Federation.import("/react-b/dist/plugin-entry.js"),
+          // Federation.import("__mf_container_plugin_1"),
+          // Federation.import("__mf_container_plugin_2"),
         ]);
 
         a.init();
         b.init();
+        await Federation.import("/react/dist/main-a.js");
+        await Federation.import("/react-b/dist/main-a.js");
       })();
     </script>
-    <script src="/react/dist/main-a.js"></script>
-    <script src="/react-b/dist/main-a.js"></script>
+    <!-- <script src="/react/dist/main-a.js"></script>
+    <script src="/react-b/dist/main-a.js"></script> -->
     <!-- <script src="/react/dist/all.js"></script> -->
 
     <script>

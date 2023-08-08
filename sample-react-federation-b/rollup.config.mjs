@@ -45,7 +45,7 @@ export default {
         "share-a": {
           requiredVersion: "2",
         },
-        "@foo/pkg/bootstrap": {
+        "@foo/pkg-b/bootstrap": {
           import: "./src/bootstrap",
           alias: true,
         },

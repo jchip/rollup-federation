@@ -1,1 +1,3 @@
-export const bootstrap = () => {};
+export const bootstrap = () => {
+  console.log("bootstrap");
+};

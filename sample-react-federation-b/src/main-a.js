@@ -10,7 +10,9 @@ const { default: apply } = await import(
 apply('#a [data-used-by="a"]', usedByA);
 apply('#a [data-used-by="both"]', usedByBoth);
 
-console.log("react", React, hello);
+const { bootstrap } = await import("@foo/pkg-b/bootstrap");
+
+console.log("react", React, "hello", hello, "bootstrap", bootstrap);
 
 const ReactDOM = await import("react-dom");
 

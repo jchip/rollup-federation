@@ -28,6 +28,7 @@ type ShareInfo = {
   id: string;
   loaded: 1 | 0;
   url?: string;
+  container?: string;
 };
 
 type ShareMeta = Record<string, ShareInfo>;
@@ -102,7 +103,7 @@ class FederationJS {
     ) {
       const url = federation.getUrlFromId(id);
       if (url) {
-        console.log("resolve with id to url", id, url);
+        console.debug("resolve with id to url", id, url);
         return url;
       }
 
@@ -111,7 +112,7 @@ class FederationJS {
       const container =
         binded && federation.$C[`__mf_container_${binded.container}`];
       if (container) {
-        console.log(
+        console.debug(
           "resolve id's bind parent",
           binded,
           `\ncontainer`,
@@ -119,30 +120,39 @@ class FederationJS {
         );
         // time to federate
         // 1. get original import name from id
-        console.log("federation - get original import name from id", id);
+
+        console.debug("federation - get original import name from id", id);
         const _SS = container.$SS;
         let importName = "";
         let importVersion = "";
-        for (const name in _SS) {
-          const _sm = _SS[name];
-          for (const version in _sm) {
-            if (id === _sm[version].id) {
-              console.log(
-                "found import name",
-                name,
-                "version",
-                version,
-                "for id",
-                id
-              );
-              importName = name;
-              importVersion = version;
-              break;
+
+        if (_SS[id]) {
+          // import is using original import id
+          importName = id;
+          importVersion = Object.keys(_SS[id])[0];
+        } else {
+          for (const name in _SS) {
+            const _sm = _SS[name];
+            for (const version in _sm) {
+              if (id === _sm[version].id) {
+                console.debug(
+                  "found import name",
+                  name,
+                  "version",
+                  version,
+                  "for id",
+                  id
+                );
+                importName = name;
+                importVersion = version;
+                break;
+              }
             }
           }
         }
+
         if (!importName) {
-          console.log("no import name found for id", id, "no federation");
+          console.debug("no import name found for id", id, "no federation");
         } else {
           // 2. get required version from container.$rvm and binded.mapData
           let requiredVersion = "";
@@ -151,7 +161,7 @@ class FederationJS {
             for (const _src of binded.mapData) {
               if (_map[_src]) {
                 requiredVersion = _map[_src];
-                console.log(
+                console.debug(
                   "found required version for import name",
                   importName,
                   requiredVersion
@@ -167,23 +177,25 @@ class FederationJS {
             federation.$SS[container.scope][importName][importVersion];
 
           if (sharedMeta && sharedMeta.url) {
-            console.log("found shared", importName, "url", sharedMeta.url);
+            console.debug("found shared", importName, "url", sharedMeta.url);
             federation.addIdUrlMap(id, sharedMeta.url);
             return sharedMeta.url;
           } else {
             // 4. if no match, load it
-            const r = federation.sysResolve.call(this, id, parentURL, meta);
-            federation.addIdUrlMap(id, r);
+            const id2 = (sharedMeta && sharedMeta.id) || id;
+            const r = federation.sysResolve.call(this, id2, parentURL, meta);
+            federation.addIdUrlMap(id2, r);
+            if (id !== id2) {
+              federation.addIdUrlMap(id, r);
+            }
+            sharedMeta.loaded = 1;
             sharedMeta.url = r;
             return r;
           }
         }
       }
 
-      const r = federation.sysResolve.call(this, id, parentURL, meta);
-      federation.addIdUrlMap(id, r);
-
-      return r;
+      return federation.sysResolve.call(this, id, parentURL, meta);
     };
 
     const _import = systemJSPrototype.import;
@@ -231,14 +243,19 @@ class FederationJS {
    * @param url
    */
   private addIdUrlMap(id: string, url: string): boolean {
-    if (url !== id && !this.urlToIdMap[url]) {
+    if (url !== id) {
+      let id2 = id;
       if (id && id[0] === "." && id[1] === "/") {
-        this.idToUrlMap[id.slice(2)] = url;
-      } else {
-        this.idToUrlMap[id] = url;
+        id2 = id.slice(2);
       }
 
-      this.urlToIdMap[url] = id;
+      if (!this.idToUrlMap[id2]) {
+        this.idToUrlMap[id2] = url;
+      }
+
+      if (!this.urlToIdMap[url]) {
+        this.urlToIdMap[url] = id;
+      }
       return true;
     }
     return false;
@@ -262,7 +279,7 @@ class FederationJS {
     meta: any
   ): unknown {
     if (typeof id !== "string") {
-      console.log("no name for register");
+      console.debug("no name for register");
       return this.sysRegister.apply(this.System, arguments);
     }
 
@@ -282,7 +299,7 @@ class FederationJS {
 
         this.addIdUrlMap(id, url);
       } else {
-        console.log("no script url detected, register name:", id);
+        console.debug("no script url detected, register name:", id);
       }
     }
     return this.sysRegister.apply(this.System, [deps, declare, meta]);
@@ -312,7 +329,7 @@ class FederationJS {
     // entry bundle
     if (options.e) {
       id = "__mf_entry_" + options.c + "_" + id;
-      console.log("entry module id", id, options);
+      console.debug("entry module id", id, options);
     }
     if (_F.$B[id]) {
       console.warn(
@@ -321,6 +338,17 @@ class FederationJS {
       );
       return _F.$B[id];
     }
+
+    const containerId = `__mf_container_${options.c}`;
+    const container = _F.$C[containerId];
+    if (!container) {
+      console.warn("mfBind container not yet registered", containerId);
+    }
+
+    if (!container.shareScope) {
+      console.warn("container sharescope is not init");
+    }
+    console.debug("binding to container", container);
 
     const binded: MFBinding = {
       name: options.n,
@@ -352,7 +380,7 @@ class FederationJS {
       return this.$C[id];
     }
 
-    const container = (this.$C[id] = new Container(id, scopeName, this));
+    const container = (this.$C[id] = new Container(id, name, scopeName, this));
 
     return container;
   }
@@ -375,7 +403,13 @@ class FederationJS {
    * @param version
    * @param uniqId
    */
-  _S(scope: string, key: string, version: string, id: string): void {
+  _S(
+    scope: string,
+    key: string,
+    version: string,
+    id: string,
+    container?: string
+  ): void {
     const _ss = this.$SS[scope];
     const _sm = _ss[key] || (_ss[key] = Object.create(null));
     const _si = _sm[version] || (_sm[version] = Object.create(null));
@@ -384,6 +418,7 @@ class FederationJS {
     } else {
       _si.id = id;
       _si.loaded = 0;
+      _si.container = container;
     }
   }
 
@@ -406,11 +441,19 @@ class FederationJS {
  *
  */
 class Container {
+  /**
+   * Original name of the container from developer
+   */
+  name: string;
+  /**
+   * ID FederationJS given to the container, derived from name
+   */
   id: string;
   scope: string;
   $SS: Record<string, ShareMeta>;
   // Importer Dir To required version mapping
   $rvm: Record<string, any>;
+  shareScope: Record<string, ShareMeta>;
   /**
    * The FederationJS runtime
    */
@@ -420,9 +463,10 @@ class Container {
    * @param name
    * @param scopeName
    */
-  constructor(id: string, scopeName: string, Federation?: any) {
+  constructor(id: string, name: string, scopeName: string, Federation?: any) {
     this.scope = scopeName;
     this.id = id;
+    this.name = name;
     this.Fed = Federation || globalThis.Federation;
     this.$rvm = Object.create(null);
     this.$SS = Object.create(null);
@@ -452,7 +496,7 @@ class Container {
         const _si: ShareInfo = (_sm[version] = Object.create(null));
         _si.id = _bundle.id;
         _si.loaded = 0;
-        this.Fed._S(scope, key, version, _bundle.id);
+        this.Fed._S(scope, key, version, _bundle.id, this.name);
       }
       const maps = _s.slice(1);
       const _rvm = this.$rvm[key] || (this.$rvm[key] = Object.create(null));
@@ -474,7 +518,8 @@ class Container {
    *
    */
   _mfInit(shareScope?: any): any {
-    return this.Fed._mfInitScope(this.scope, shareScope);
+    this.shareScope = this.Fed._mfInitScope(this.scope, shareScope);
+    return this.shareScope;
   }
 
   /**
