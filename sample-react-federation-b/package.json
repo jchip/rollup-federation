@@ -38,6 +38,7 @@
     "react-dom": "^18.1.0",
     "rollup": "^3.26.2",
     "rollup-plugin-federation": "^1.0.0",
+    "terser": "^5.19.2",
     "typescript": "^5.1.6"
   },
   "dependencies": {

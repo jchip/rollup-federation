@@ -24,11 +24,15 @@ type BindOptions = {
   e: boolean;
 };
 
-type ShareInfo = {
+type ShareSource = {
   id: string;
+  container: string;
+};
+
+type ShareInfo = {
+  source: ShareSource[];
   loaded: 1 | 0;
   url?: string;
-  container?: string;
 };
 
 type ShareMeta = Record<string, ShareInfo>;
@@ -71,6 +75,23 @@ function getCurrentScript() {
 
 /**
  *
+ * @param name
+ * @returns
+ */
+function containerNameToId(name: string): string {
+  if (
+    name[0] === "_" &&
+    name[1] === "_" &&
+    name[2] === "m" &&
+    name[3] === "f"
+  ) {
+    return name;
+  }
+  return `__mf_container_` + name;
+}
+
+/**
+ *
  */
 class FederationJS {
   private System: any;
@@ -109,8 +130,7 @@ class FederationJS {
 
       const parentId = federation.getIdFromUrl(parentURL);
       const binded = parentId && federation.$B[parentId];
-      const container =
-        binded && federation.$C[`__mf_container_${binded.container}`];
+      const container = binded && federation.getContainer(binded.container);
       if (container) {
         console.debug(
           "resolve id's bind parent",
@@ -134,7 +154,7 @@ class FederationJS {
           for (const name in _SS) {
             const _sm = _SS[name];
             for (const version in _sm) {
-              if (id === _sm[version].id) {
+              if (id === _sm[version].source[0].id) {
                 console.debug(
                   "found import name",
                   name,
@@ -170,28 +190,53 @@ class FederationJS {
               }
             }
           }
+
           // 3. match existing loaded module from shared info
 
-          // TODO: semver match, for now just use hard version
-          const sharedMeta =
-            federation.$SS[container.scope][importName][importVersion];
+          let shareId = id;
+          let shareParentUrl = parentURL;
+          const shareMeta = federation.$SS[container.scope]?.[importName];
 
-          if (sharedMeta && sharedMeta.url) {
-            console.debug("found shared", importName, "url", sharedMeta.url);
-            federation.addIdUrlMap(id, sharedMeta.url);
-            return sharedMeta.url;
-          } else {
-            // 4. if no match, load it
-            const id2 = (sharedMeta && sharedMeta.id) || id;
-            const r = federation.sysResolve.call(this, id2, parentURL, meta);
-            federation.addIdUrlMap(id2, r);
-            if (id !== id2) {
-              federation.addIdUrlMap(id, r);
+          // TODO: semver match, for now just use hard version
+          const shareInfo =
+            shareMeta &&
+            (importVersion
+              ? shareMeta[importVersion]
+              : shareMeta[Object.keys(shareMeta)[0]]);
+
+          if (shareInfo) {
+            if (shareInfo.url) {
+              console.debug("found shared", importName, "url", shareInfo.url);
+              federation.addIdUrlMap(id, shareInfo.url);
+              return shareInfo.url;
             }
-            sharedMeta.loaded = 1;
-            sharedMeta.url = r;
-            return r;
+
+            // The container registered the share info, so the id is
+            // relative to the container's URL.
+            if (shareInfo.source.length > 0) {
+              shareParentUrl = federation.getUrlFromId(
+                containerNameToId(shareInfo.source[0].container)
+              );
+              shareId = shareInfo.source[0].id;
+            }
           }
+
+          const r = federation.sysResolve.call(
+            this,
+            shareId,
+            shareParentUrl,
+            meta
+          );
+          federation.addIdUrlMap(shareId, r);
+          if (id !== shareId) {
+            federation.addIdUrlMap(id, r);
+          }
+
+          if (shareInfo) {
+            shareInfo.loaded = 1;
+            shareInfo.url = r;
+          }
+          return r;
         }
       }
 
@@ -214,6 +259,15 @@ class FederationJS {
     this.$C = Object.create(null);
     this.$B = Object.create(null);
     this.$SS = Object.create(null);
+  }
+
+  /**
+   *
+   * @param name
+   * @returns
+   */
+  private getContainer(name: string) {
+    return this.$C[containerNameToId(name)];
   }
 
   /**
@@ -339,10 +393,9 @@ class FederationJS {
       return _F.$B[id];
     }
 
-    const containerId = `__mf_container_${options.c}`;
-    const container = _F.$C[containerId];
+    const container = _F.getContainer(options.c);
     if (!container) {
-      console.warn("mfBind container not yet registered", containerId);
+      console.warn("mfBind container not yet registered", options.c);
     }
 
     if (!container.shareScope) {
@@ -375,7 +428,7 @@ class FederationJS {
    * @returns
    */
   _mfContainer(name: string, scopeName: string) {
-    const id = `__mf_container_${name}`;
+    const id = containerNameToId(name);
     if (this.$C[id]) {
       return this.$C[id];
     }
@@ -408,17 +461,20 @@ class FederationJS {
     key: string,
     version: string,
     id: string,
-    container?: string
+    container: string
   ): void {
     const _ss = this.$SS[scope];
     const _sm = _ss[key] || (_ss[key] = Object.create(null));
     const _si = _sm[version] || (_sm[version] = Object.create(null));
-    if (_si.id) {
-      console.debug(`share already exist for ${scope}:${key}:${version}`);
+    if (_si.source) {
+      console.debug(
+        `trying to add share from ` + container + ", but it already exist:",
+        scope + ":" + key + ":" + version
+      );
+      _si.source.push({ id, container });
     } else {
-      _si.id = id;
+      _si.source = [{ id, container }];
       _si.loaded = 0;
-      _si.container = container;
     }
   }
 
@@ -431,7 +487,7 @@ class FederationJS {
     const _ss =
       this.$SS[scope] || (this.$SS[scope] = shareScope || Object.create(null));
     if (shareScope && _ss !== shareScope) {
-      throw new Error(`share scope ${scope} already initialized.`);
+      throw new Error(`share scope ` + scope + ` already initialized.`);
     }
     return _ss;
   }
@@ -494,9 +550,13 @@ class Container {
       const [_bundle, version] = _s[0];
       if (version) {
         const _si: ShareInfo = (_sm[version] = Object.create(null));
-        _si.id = _bundle.id;
+        _si.source = [{ id: _bundle.id, container: this.name }];
         _si.loaded = 0;
-        this.Fed._S(scope, key, version, _bundle.id, this.name);
+        // import === false means consume only shared, do not add it
+        // to the global share scope since this container cannot provide it
+        if (config.import !== false) {
+          this.Fed._S(scope, key, version, _bundle.id, this.name);
+        }
       }
       const maps = _s.slice(1);
       const _rvm = this.$rvm[key] || (this.$rvm[key] = Object.create(null));

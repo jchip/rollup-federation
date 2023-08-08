@@ -27,7 +27,7 @@ export default {
       debugging: false,
       exposes: {
         "./bootstrap": "./src/bootstrap",
-        "@foo/pkg/bootstrap": "@foo/pkg/bootstrap",
+        "@foo/pkg-b/bootstrap": "@foo/pkg-b/bootstrap",
       },
       shared: {
         react: {
@@ -50,6 +50,9 @@ export default {
           alias: true,
         },
         "share-no-ref": {},
+        "test-consume-only": {
+          import: false,
+        },
       },
     }),
     isProduction && terser(),

@@ -307,7 +307,6 @@ export default function federation(_options: any): Plugin {
               // }
               const picked = pick(shareObj, pickShareKeys);
               // const ver = shareObj.requiredVersion || "";
-              const pickedStr = JSON.stringify(picked);
               const importId = shareObj.import || key;
               const collected = collectedShares[importId];
               if (collected) {
@@ -330,6 +329,7 @@ export default function federation(_options: any): Plugin {
                     );
                     _info.push(`"${pkgVer.version}"`);
                   } else {
+                    picked.import = false;
                     _info.push(`""`);
                   }
 
@@ -362,6 +362,8 @@ export default function federation(_options: any): Plugin {
                     `${_str.join("\n")}\n  [${_vInfo},\n  ${_svStr.join(", ")}]`
                   );
                 }
+                const pickedStr = JSON.stringify(picked);
+
                 code.push(
                   `  ${CONTAINER_VAR}._S('${key}', ${pickedStr}, [\n${_code.join(
                     ",\n"
@@ -377,7 +379,12 @@ export default function federation(_options: any): Plugin {
                   const dir = resolve("node_modules", importId);
                   const pkgVer = getNearestPackageVersion(importId, dir);
                   _ver = pkgVer.version || shareObj.version || "";
+                } else {
+                  picked.import = false;
                 }
+
+                const pickedStr = JSON.stringify(picked);
+
                 code.push(
                   `  ${CONTAINER_VAR}._S('${key}', ${pickedStr},\n  [\n  // ${importId}\n  [[import('${importId}'), "${_ver}"]]]);`
                 );

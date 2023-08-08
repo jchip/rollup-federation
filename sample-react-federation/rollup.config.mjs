@@ -50,6 +50,9 @@ export default {
           alias: true,
         },
         "share-no-ref": {},
+        "test-consume-only": {
+          import: "./src/test-consume-only",
+        },
       },
     }),
     isProduction && terser(),

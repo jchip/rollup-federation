@@ -9,10 +9,20 @@ const { default: apply } = await import(
 );
 apply('#a [data-used-by="a"]', usedByA);
 apply('#a [data-used-by="both"]', usedByBoth);
+const { testConsumeOnly } = await import("test-consume-only");
 
 const { bootstrap } = await import("@foo/pkg-b/bootstrap");
 
-console.log("react", React, "hello", hello, "bootstrap", bootstrap);
+console.log(
+  "react",
+  React,
+  "hello",
+  hello,
+  "bootstrap",
+  bootstrap,
+  "test-consume-only",
+  testConsumeOnly
+);
 
 const ReactDOM = await import("react-dom");
 

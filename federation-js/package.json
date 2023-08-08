@@ -6,6 +6,7 @@
   "homepage": "",
   "license": "UNLICENSED",
   "scripts": {
+    "minify": "terser --config-file terser.json -o dist/federation-js.js -- dist/federation-js.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.4.7",
+    "terser": "^5.19.2",
     "typescript": "^5.1.6"
   }
 }

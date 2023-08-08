@@ -1,0 +1,9 @@
+{
+  "mangle": {
+    "toplevel": true,
+    "reserved": ["FederationJS", "Container"]
+  },
+  "compress": {
+    "pure_funcs": ["console.debug"]
+  }
+}
