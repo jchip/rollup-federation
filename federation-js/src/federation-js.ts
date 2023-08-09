@@ -1,4 +1,4 @@
-import { satisfy, parseRange } from "./semver";
+import { satisfy } from "./semver/satisfy";
 
 /**
  *
@@ -149,7 +149,7 @@ function containerNameToId(name: string): string {
      * @param System
      */
     constructor(System?: any) {
-      const S = (this.System = System || globalThis.FileSystem);
+      const S = (this.System = System || globalThis.System);
       const systemJSPrototype = S.constructor.prototype;
       this.sysResolve = systemJSPrototype.resolve;
       this.sysRegister = systemJSPrototype.register;
@@ -259,7 +259,7 @@ function containerNameToId(name: string): string {
           for (const ver in shareMeta) {
             if (
               shareMeta[ver].srcIdx !== undefined &&
-              satisfy(parseRange(requiredVersion), ver)
+              satisfy(ver, requiredVersion)
             ) {
               console.debug(
                 "found a loaded shared version",
@@ -286,9 +286,7 @@ function containerNameToId(name: string): string {
 
         const shareInfo =
           shareMeta &&
-          (matchedVersion
-            ? shareMeta[matchedVersion]
-            : shareMeta[Object.keys(shareMeta)[0]]);
+          shareMeta[matchedVersion || (shareMeta && Object.keys(shareMeta)[0])];
 
         let shareId = id;
         let shareParentUrl = parentURL;
