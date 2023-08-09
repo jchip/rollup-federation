@@ -13,3 +13,4 @@ dist
 plugins
 systemjs
 currentExecutingScript
+.*-cache
