@@ -6,7 +6,7 @@
     "module": "ES2015",
     "esModuleInterop": false,
     "importHelpers": false,
-    "target": "ES2015",
+    "target": "ES2018",
     "preserveConstEnums": true,
     "sourceMap": true,
     "declaration": true,

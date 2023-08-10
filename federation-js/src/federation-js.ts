@@ -1,4 +1,4 @@
-import { satisfy } from "./semver/satisfy";
+import { satisfy, parseRange } from "./semver";
 
 /**
  *
@@ -9,7 +9,7 @@ type MFBinding = {
   fileName: string;
   container: string;
   scopeName: string;
-  mapData: any;
+  mapData: string[];
   register: (dep: any, declare: any, metas: any) => unknown;
 };
 
@@ -38,11 +38,9 @@ type ShareInfo = {
   srcIdx?: number;
 };
 
-type ShareScope = {
-  [shareKey: string]: {
-    [version: string]: ShareInfo;
-  };
-};
+type ShareMeta = Record<string, ShareInfo>;
+
+type ShareScope = Record<string, ShareMeta>;
 
 /**
  * {
@@ -170,30 +168,35 @@ function containerNameToId(name: string): string {
         }
 
         const parentId = federation.getIdForUrl(parentURL);
-        const binded = parentId && federation.getBindForId(parentId);
-        const container = binded && federation.getContainer(binded.container);
-
+        let container = parentId && federation.getContainer(parentId);
+        let rvmMapData: string[];
         if (!container) {
-          if (parentId) {
-            console.warn(
-              "Unable to find a binded object for a parent id",
-              parentId,
-              "url",
-              parentURL
-            );
-          }
+          const binded = parentId && federation.getBindForId(parentId);
+          container = binded && federation.getContainer(binded.container);
+          if (!container) {
+            if (parentId) {
+              console.warn(
+                "Unable to find a binded object for a parent id",
+                parentId,
+                "url",
+                parentURL
+              );
+            }
 
-          return federation.sysResolve.call(this, id, parentURL, meta);
+            return federation.sysResolve.call(this, id, parentURL, meta);
+          }
+          rvmMapData = binded.mapData;
+          console.debug(
+            "resolve bind parent of",
+            id,
+            binded,
+            `\ncontainer`,
+            container,
+            "\nget original import name from id to check for federation",
+            id
+          );
         }
 
-        console.debug(
-          "resolve id's bind parent",
-          binded,
-          `\ncontainer`,
-          container,
-          "\nget original import name from id to check for federation",
-          id
-        );
         // time to federate
         // 1. get original import name from id
 
@@ -233,56 +236,24 @@ function containerNameToId(name: string): string {
         }
 
         // 2. get required version from container.$SC.rvm and binded.mapData
-        let requiredVersion = "";
-        const _map = container.$SC[importName]?.rvm;
-        if (_map) {
-          for (const _src of binded.mapData) {
-            if (_map[_src]) {
-              requiredVersion = _map[_src];
-              console.debug(
-                "found required version for import name",
-                importName,
-                requiredVersion
-              );
-              break;
-            }
-          }
-        }
+        const requiredVersion = federation.matchRvm(
+          importName,
+          container,
+          rvmMapData
+        );
 
         // 3. match existing loaded module from shared info
 
         const shareMeta = federation.$SS[container.scope]?.[importName];
 
-        let matchedVersion: string;
-
-        if (requiredVersion) {
-          for (const ver in shareMeta) {
-            if (
-              shareMeta[ver].srcIdx !== undefined &&
-              satisfy(ver, requiredVersion)
-            ) {
-              console.debug(
-                "found a loaded shared version",
-                ver,
-                "that satisfied semver",
-                requiredVersion
-              );
-              matchedVersion = ver;
-              break;
-            }
-          }
-          if (!matchedVersion) {
-            console.warn(
-              "no loaded version satisfied",
+        const matchedVersion = requiredVersion
+          ? federation.semverMatch(
+              shareMeta,
               requiredVersion,
-              "found, using exact version",
+              true,
               importVersion
-            );
-            matchedVersion = importVersion;
-          }
-        } else {
-          matchedVersion = importVersion;
-        }
+            )
+          : importVersion;
 
         const shareInfo =
           shareMeta &&
@@ -298,18 +269,8 @@ function containerNameToId(name: string): string {
             return shareInfo.url;
           }
 
-          let ix = shareInfo.srcIdx;
+          const source = federation.pickShareSource(shareInfo);
 
-          if (ix === undefined) {
-            if (shareInfo.sources.length > 1) {
-              ix = Math.floor(Math.random() * shareInfo.sources.length);
-            } else {
-              ix = 0;
-            }
-            shareInfo.srcIdx = ix;
-          }
-
-          const source = shareInfo.sources[ix];
           source.loaded = true;
           // The container registered the share info, so the id is
           // relative to the container's URL.
@@ -354,6 +315,92 @@ function containerNameToId(name: string): string {
       this.$C = Object.create(null);
       this.$B = Object.create(null);
       this.$SS = Object.create(null);
+    }
+
+    private matchRvm(
+      importName: string,
+      container: Container,
+      rvmMapData: string[]
+    ): string {
+      const rvm = container.$SC[importName]?.rvm;
+      if (rvm && rvmMapData) {
+        for (const _src of rvmMapData) {
+          if (rvm[_src]) {
+            const requiredVersion = rvm[_src];
+            console.debug(
+              "found required version for import name",
+              importName,
+              requiredVersion
+            );
+            return requiredVersion;
+          }
+        }
+      }
+
+      return "";
+    }
+
+    /**
+     *
+     * @param shareMeta
+     * @param semver
+     * @param fallbackVer
+     * @returns
+     */
+    private semverMatch(
+      shareMeta: ShareMeta,
+      semver: string,
+      loadedOnly: boolean,
+      fallbackVer?: string
+    ): string {
+      let matchedVersion = "";
+      for (const ver in shareMeta) {
+        if (
+          (!loadedOnly || shareMeta[ver].srcIdx !== undefined) &&
+          satisfy(parseRange(semver), ver)
+        ) {
+          console.debug(
+            "found a shared version",
+            ver,
+            "that satisfied semver",
+            semver
+          );
+          matchedVersion = ver;
+          break;
+        }
+      }
+      if (!matchedVersion) {
+        console.warn(
+          "no",
+          (loadedOnly ? "loaded " : "") + "version satisfied",
+          semver,
+          "found, fallback:",
+          fallbackVer
+        );
+        matchedVersion = fallbackVer;
+      }
+
+      return matchedVersion;
+    }
+
+    /**
+     *
+     * @param shareInfo
+     * @returns
+     */
+    private pickShareSource(shareInfo: ShareInfo): ShareSource {
+      let ix = shareInfo.srcIdx;
+
+      if (ix === undefined) {
+        if (shareInfo.sources.length > 1) {
+          ix = Math.floor(Math.random() * shareInfo.sources.length);
+        } else {
+          ix = 0;
+        }
+        shareInfo.srcIdx = ix;
+      }
+
+      return shareInfo.sources[ix];
     }
 
     /**
@@ -421,12 +468,15 @@ function containerNameToId(name: string): string {
       return this.System.import(id, parentUrl, meta);
     }
 
-    private register_currentExecutingScriptAnchor(
-      id: any,
-      deps: any,
-      declare: any,
-      meta: any
-    ): unknown {
+    /**
+     *
+     * @param id
+     * @param dep
+     * @param declare
+     * @param metas
+     * @returns
+     */
+    register(id: any, deps: any, declare: any, meta: any): unknown {
       if (typeof id !== "string") {
         console.debug("no name for register");
         return this.sysRegister.apply(this.System, arguments);
@@ -452,22 +502,6 @@ function containerNameToId(name: string): string {
         }
       }
       return this.sysRegister.apply(this.System, [deps, declare, meta]);
-    }
-    /**
-     *
-     * @param id
-     * @param dep
-     * @param declare
-     * @param metas
-     * @returns
-     */
-    register(id: any, deps: any, declare: any, meta: any): unknown {
-      return this.register_currentExecutingScriptAnchor(
-        id,
-        deps,
-        declare,
-        meta
-      );
     }
 
     /**
@@ -511,9 +545,14 @@ function containerNameToId(name: string): string {
       }
 
       if (!container.shareScope) {
-        console.warn("container sharescope is not init");
+        console.warn("mfBind container sharescope is not init");
       }
-      console.debug("binding to container", container);
+      console.debug(
+        "binding to container, from module",
+        id,
+        "to",
+        container.id
+      );
 
       const binded: MFBinding = {
         name: options.n,
@@ -556,13 +595,41 @@ function containerNameToId(name: string): string {
     }
 
     /**
-     * _**Get Shared**_
+     * _**Module Federation Import**_
      * @param name
      * @param scope
-     * @param version
+     * @param semver
+     * @param fallbackToFirst
      */
-    _mfGetS(name: string, scope: string, version?: string) {
-      //
+    _mfImport(
+      name: string,
+      scope: string,
+      semver?: string,
+      fallbackToFirst?: boolean
+    ) {
+      const shareMeta = this.$SS[scope]?.[name];
+      if (shareMeta) {
+        let matchedVersion =
+          semver && this.semverMatch(shareMeta, semver, false);
+        if (!matchedVersion && (!semver || fallbackToFirst)) {
+          matchedVersion = Object.keys(shareMeta)[0];
+        }
+        const shareInfo = shareMeta[matchedVersion];
+
+        if (shareInfo) {
+          if (shareInfo.url) {
+            return this.System.import(shareInfo.url);
+          } else {
+            const source = this.pickShareSource(shareInfo);
+            const parentUrl = this.getUrlForId(
+              containerNameToId(source.container)
+            );
+            return this.System.import(source.id, parentUrl);
+          }
+        }
+      }
+
+      return undefined;
     }
 
     /**
@@ -586,7 +653,8 @@ function containerNameToId(name: string): string {
       const _si = _sm[version] || (_sm[version] = Object.create(null));
       if (_si.sources) {
         console.debug(
-          `trying to add share from ` + container + ", but it already exist:",
+          `adding share source from container`,
+          container,
           scope + ":" + key + ":" + version
         );
         _si.sources.push({ id, container });
@@ -698,17 +766,6 @@ function containerNameToId(name: string): string {
     _mfInit(shareScope?: any): any {
       this.shareScope = this.Fed._mfInitScope(this.scope, shareScope);
       return this.shareScope;
-    }
-
-    /**
-     *
-     * @param name
-     * @param version
-     * @param scope
-     * @returns
-     */
-    _mfGet(name: string, version?: string, scope?: string): unknown {
-      return this.Fed._mfGetS(name, scope || this.scope, version);
     }
   }
 

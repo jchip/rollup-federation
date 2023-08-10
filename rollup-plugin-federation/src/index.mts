@@ -542,6 +542,9 @@ var System = Federation._mfBind(
     e: ${chunk.isEntry} // chunk isEntry
   },
   // dirs from ids of modules included in the chunk
+  // use these to match rvm in container to find required version
+  // if this is empty, it means this chunk uses no shared module
+  // %nm is token that replaced node_modules
   ${JSON.stringify(packModuleIds())}
 );
 `;
