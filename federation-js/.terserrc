@@ -2,9 +2,14 @@
   "mangle": {
     "toplevel": true,
     "reserved": [
+      "Federation",
       "FederationJS",
-      "Container"
-    ]
+      "Container",
+      "System"
+    ],
+    "properties": {
+      "only_annotated": true
+    }
   },
   "compress": {
     "pure_funcs": [
