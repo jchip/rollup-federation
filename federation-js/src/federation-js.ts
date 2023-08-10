@@ -1,5 +1,24 @@
 import { satisfy, parseRange } from "./semver";
 
+// globalThis polyfill
+(function (Object) {
+  typeof globalThis !== "object" &&
+    (this
+      ? get()
+      : (Object.defineProperty(Object.prototype, "_T_", {
+          configurable: true,
+          get: get,
+        }),
+        // @ts-ignore
+        _T_));
+  function get() {
+    var global = this || self;
+    global.globalThis = global;
+    // @ts-ignore
+    delete Object.prototype._T_;
+  }
+})(Object);
+
 /**
  *
  */
@@ -91,6 +110,10 @@ type ShareConfig = {
 
 const hasDocument = typeof document !== "undefined";
 
+/**
+ *
+ * @returns
+ */
 function getLastScript() {
   if (hasDocument && document.readyState === "loading") {
     const scripts = document.querySelectorAll("script[src]");
@@ -100,15 +123,30 @@ function getLastScript() {
   return undefined;
 }
 
+/**
+ *
+ * @returns
+ */
 function getCurrentScript() {
-  if (!hasDocument) {
-    return undefined;
-  }
-  const curScr = document.currentScript;
-  if (curScr) {
-    return curScr;
-  }
-  return getLastScript();
+  return hasDocument && (document.currentScript || getLastScript());
+}
+
+/**
+ *
+ * @param id
+ * @returns
+ */
+function startsWithDotSlash(id: string) {
+  return id && id.startsWith("./");
+}
+
+/**
+ *
+ * @param obj
+ * @returns
+ */
+function firstKey(obj: any) {
+  return Object.keys(obj)[0];
 }
 
 /**
@@ -117,15 +155,12 @@ function getCurrentScript() {
  * @returns
  */
 function containerNameToId(name: string): string {
-  if (
-    name[0] === "_" &&
-    name[1] === "_" &&
-    name[2] === "m" &&
-    name[3] === "f"
-  ) {
+  const containerSigPrefix = "__mf_container_";
+
+  if (name.startsWith(containerSigPrefix)) {
     return name;
   }
-  return `__mf_container_` + name;
+  return containerSigPrefix + name;
 }
 
 function createObject() {
@@ -239,7 +274,7 @@ function createObject() {
           : importVersion;
 
         const shareInfo =
-          shareMeta && shareMeta[matchedVersion || Object.keys(shareMeta)[0]];
+          shareMeta && shareMeta[matchedVersion || firstKey(shareMeta)];
 
         let shareId = id;
         let shareParentUrl = parentURL;
@@ -314,7 +349,7 @@ function createObject() {
       if (_SS[id]) {
         // import is using original import id
         importName = id;
-        importVersion = Object.keys(_SS[id].versions)[0];
+        importVersion = firstKey(_SS[id].versions);
       } else {
         for (const name in _SS) {
           const _sm = _SS[name];
@@ -456,7 +491,7 @@ function createObject() {
      */
     /*@__MANGLE_PROP__*/
     private getUrlForId(id: string): string {
-      if (id && id[0] === "." && id[1] === "/") {
+      if (startsWithDotSlash(id)) {
         return this.$iU[id.slice(2)];
       }
       return this.$iU[id];
@@ -481,7 +516,7 @@ function createObject() {
     private addIdUrlMap(id: string, url: string): boolean {
       if (url !== id) {
         let id2 = id;
-        if (id && id[0] === "." && id[1] === "/") {
+        if (startsWithDotSlash(id)) {
           id2 = id.slice(2);
         }
 
@@ -524,21 +559,14 @@ function createObject() {
 
       if (typeof deps !== "string") {
         const currentScr: any = getCurrentScript();
-        const _ls: any = getLastScript();
         if (currentScr) {
-          if (_ls && _ls.src !== currentScr.src) {
-            console.error(
-              "currentScript and lastScript src mismatched",
-              _ls.src,
-              currentScr.src
-            );
-          }
-
-          const url = currentScr.src;
-
-          this.addIdUrlMap(id, url);
+          this.addIdUrlMap(id, currentScr.src);
         } else {
-          console.debug("no script url detected, register name:", id);
+          console.debug(
+            "federation register",
+            name,
+            "- no current script url detected, register name:"
+          );
         }
       }
       return this.sysRegister.apply(this._System, [deps, declare, meta]);
@@ -551,7 +579,7 @@ function createObject() {
      */
     /*@__MANGLE_PROP__*/
     private getBindForId(id: string): MFBinding {
-      if (id[0] === "." && id[1] === "/") {
+      if (startsWithDotSlash(id)) {
         return this.$B[id.slice(2)];
       }
       return this.$B[id];
@@ -559,12 +587,11 @@ function createObject() {
 
     /**
      *
-     * @param name
-     * @param id
+     * @param options
      * @param mapData
      * @returns
      */
-    _mfBind(options: BindOptions, mapData: any): MFBinding {
+    _mfBind(options: BindOptions, mapData: string[]): MFBinding {
       const _F = this;
       let id = options.f;
       // entry bundle (isEntry)
@@ -574,26 +601,25 @@ function createObject() {
       }
       if (_F.$B[id]) {
         console.warn(
-          `module fedeeration initial binding already exist for id`,
+          `module federation initial binding already exist for id`,
           id
         );
         return _F.$B[id];
       }
 
-      const container = _F.getContainer(options.c);
-      if (!container) {
-        console.warn("mfBind container not yet registered", options.c);
-      }
-
-      if (!container.shareScope) {
-        console.warn("mfBind container sharescope is not init");
-      }
-      console.debug(
-        "binding to container, from module",
-        id,
-        "to",
-        container.id
-      );
+      // const container = _F.getContainer(options.c);
+      // if (!container) {
+      //   console.warn("mfBind container not yet registered", options.c);
+      // } else if (!container.$SS) {
+      //   console.warn("mfBind container sharescope is not init");
+      // } else {
+      //   console.debug(
+      //     "binding to container, from module",
+      //     id,
+      //     "to",
+      //     container.id
+      //   );
+      // }
 
       const binded: MFBinding = {
         name: options.n,
@@ -605,6 +631,7 @@ function createObject() {
           return _F.register(id, dep, declare, metas);
         },
       };
+
       if (id !== options.f) {
         binded.id = id;
       }
@@ -653,7 +680,7 @@ function createObject() {
         let matchedVersion =
           semver && this.semverMatch(name, shareMeta, semver, false);
         if (!matchedVersion && (!semver || fallbackToFirst)) {
-          matchedVersion = Object.keys(shareMeta)[0];
+          matchedVersion = firstKey(shareMeta);
         }
         const shareInfo = shareMeta[matchedVersion];
 
@@ -734,7 +761,7 @@ function createObject() {
     scope: string;
     $SC: ShareConfig;
 
-    shareScope: ShareScope;
+    $SS: ShareScope;
     /**
      * The FederationJS runtime
      */
@@ -804,10 +831,9 @@ function createObject() {
      *
      */
     _mfInit(shareScope?: any): any {
-      this.shareScope = this.Fed._mfInitScope(this.scope, shareScope);
-      return this.shareScope;
+      return (this.$SS = this.Fed._mfInitScope(this.scope, shareScope));
     }
   }
 
   _global.Federation = new FederationJS();
-})(typeof self !== "undefined" ? self : window);
+})(globalThis);
