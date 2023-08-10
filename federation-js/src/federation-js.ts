@@ -141,10 +141,13 @@ function createObject() {
     private $C: Record<string, Container>;
     private $B: Record<string, MFBinding>;
     private $SS: ShareStore;
-    private _resolve: any;
-    private _register: any;
-    private idToUrlMap: Record<string, string>;
-    private urlToIdMap: Record<string, string>;
+    private sysResolve: any;
+    private sysRegister: any;
+    /** ID to URL mapping */
+    private $iU: Record<string, string>;
+    /** URL to ID mapping */
+    private $uI: Record<string, string>;
+    randomSource?: boolean;
 
     /**
      *
@@ -154,11 +157,11 @@ function createObject() {
       const S = /*@__MANGLE_PROP__*/ (this._System = _System || _global.System);
       const systemJSPrototype = S.constructor.prototype;
       /*@__MANGLE_PROP__*/
-      this._resolve = systemJSPrototype.resolve;
+      this.sysResolve = systemJSPrototype.resolve;
       /*@__MANGLE_PROP__*/
-      this._register = systemJSPrototype.register;
-      this.idToUrlMap = createObject();
-      this.urlToIdMap = createObject();
+      this.sysRegister = systemJSPrototype.register;
+      this.$iU = createObject();
+      this.$uI = createObject();
 
       const federation = this;
 
@@ -189,7 +192,7 @@ function createObject() {
               );
             }
 
-            return federation._resolve.call(this, id, parentURL, meta);
+            return federation.sysResolve.call(this, id, parentURL, meta);
           }
           rvmMapData = binded.mapData;
           console.debug(
@@ -211,7 +214,7 @@ function createObject() {
 
         if (!importName) {
           console.debug("no import name found for id", id, "no federation");
-          return federation._resolve.call(this, id, parentURL, meta);
+          return federation.sysResolve.call(this, id, parentURL, meta);
         }
 
         // 2. get required version from container.$SC.rvm and binded.mapData
@@ -236,8 +239,7 @@ function createObject() {
           : importVersion;
 
         const shareInfo =
-          shareMeta &&
-          shareMeta[matchedVersion || (shareMeta && Object.keys(shareMeta)[0])];
+          shareMeta && shareMeta[matchedVersion || Object.keys(shareMeta)[0]];
 
         let shareId = id;
         let shareParentUrl = parentURL;
@@ -260,18 +262,23 @@ function createObject() {
           shareId = source.id;
         }
 
-        const r = federation._resolve.call(this, shareId, shareParentUrl, meta);
+        const resolved = federation.sysResolve.call(
+          this,
+          shareId,
+          shareParentUrl,
+          meta
+        );
 
-        federation.addIdUrlMap(shareId, r);
+        federation.addIdUrlMap(shareId, resolved);
         if (id !== shareId) {
-          federation.addIdUrlMap(id, r);
+          federation.addIdUrlMap(id, resolved);
         }
 
         if (shareInfo) {
-          shareInfo.url = r;
+          shareInfo.url = resolved;
         }
 
-        return r;
+        return resolved;
       };
 
       const _import = systemJSPrototype.import;
@@ -421,7 +428,7 @@ function createObject() {
       let ix = shareInfo.srcIdx;
 
       if (ix === undefined) {
-        if (shareInfo.sources.length > 1) {
+        if (this.randomSource === true && shareInfo.sources.length > 1) {
           ix = Math.floor(Math.random() * shareInfo.sources.length);
         } else {
           ix = 0;
@@ -450,9 +457,9 @@ function createObject() {
     /*@__MANGLE_PROP__*/
     private getUrlForId(id: string): string {
       if (id && id[0] === "." && id[1] === "/") {
-        return this.idToUrlMap[id.slice(2)];
+        return this.$iU[id.slice(2)];
       }
-      return this.idToUrlMap[id];
+      return this.$iU[id];
     }
 
     /**
@@ -462,7 +469,7 @@ function createObject() {
      */
     /*@__MANGLE_PROP__*/
     private getIdForUrl(url: string): string {
-      return this.urlToIdMap[url];
+      return this.$uI[url];
     }
 
     /**
@@ -478,12 +485,12 @@ function createObject() {
           id2 = id.slice(2);
         }
 
-        if (!this.idToUrlMap[id2]) {
-          this.idToUrlMap[id2] = url;
+        if (!this.$iU[id2]) {
+          this.$iU[id2] = url;
         }
 
-        if (!this.urlToIdMap[url]) {
-          this.urlToIdMap[url] = id;
+        if (!this.$uI[url]) {
+          this.$uI[url] = id;
         }
         return true;
       }
@@ -512,7 +519,7 @@ function createObject() {
     register(id: any, deps: any, declare: any, meta: any): unknown {
       if (typeof id !== "string") {
         console.debug("no name for register");
-        return this._register.apply(this._System, arguments);
+        return this.sysRegister.apply(this._System, arguments);
       }
 
       if (typeof deps !== "string") {
@@ -534,7 +541,7 @@ function createObject() {
           console.debug("no script url detected, register name:", id);
         }
       }
-      return this._register.apply(this._System, [deps, declare, meta]);
+      return this.sysRegister.apply(this._System, [deps, declare, meta]);
     }
 
     /**
@@ -560,7 +567,7 @@ function createObject() {
     _mfBind(options: BindOptions, mapData: any): MFBinding {
       const _F = this;
       let id = options.f;
-      // entry bundle
+      // entry bundle (isEntry)
       if (options.e) {
         id = "__mf_entry_" + options.c + "_" + id;
         console.debug("entry module id", id, options);
