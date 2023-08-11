@@ -316,18 +316,18 @@ function createObject() {
         return resolved;
       };
 
-      const _import = systemJSPrototype.import;
-      systemJSPrototype.import = function (
-        id: string,
-        parentUrl: string,
-        meta: any
-      ) {
-        const url = federation.getUrlForId(id);
-        if (url) {
-          return _import.call(this, url, parentUrl, meta);
-        }
-        return _import.call(this, id, parentUrl, meta);
-      };
+      // const _import = systemJSPrototype.import;
+      // systemJSPrototype.import = function (
+      //   id: string,
+      //   parentUrl: string,
+      //   meta: any
+      // ) {
+      //   const url = federation.getUrlForId(id);
+      //   if (url) {
+      //     return _import.call(this, url, parentUrl, meta);
+      //   }
+      //   return _import.call(this, id, parentUrl, meta);
+      // };
 
       this.$C = createObject();
       this.$B = createObject();
@@ -421,11 +421,12 @@ function createObject() {
       loadedOnly: boolean,
       fallbackVer?: string
     ): string {
+      const svRange = parseRange(semver);
       let matchedVersion = "";
       for (const ver in shareMeta) {
         if (
           (!loadedOnly || shareMeta[ver].srcIdx !== undefined) &&
-          satisfy(parseRange(semver), ver)
+          satisfy(svRange, ver)
         ) {
           console.debug(
             name,

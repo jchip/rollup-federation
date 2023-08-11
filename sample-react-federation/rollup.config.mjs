@@ -28,6 +28,8 @@ export default {
       exposes: {
         "./bootstrap": "./src/bootstrap",
         "@foo/pkg/bootstrap": "@foo/pkg/bootstrap",
+        "./expose-only": "./src/expose-only",
+        react: "react",
       },
       shared: {
         react: {
