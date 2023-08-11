@@ -212,11 +212,11 @@ function createObject() {
         }
 
         const parentId = federation.getIdForUrl(parentURL);
-        let container = parentId && federation.getContainer(parentId);
+        let container = parentId && federation._mfGetContainer(parentId);
         let rvmMapData: string[];
         if (!container) {
           const binded = parentId && federation.getBindForId(parentId);
-          container = binded && federation.getContainer(binded.container);
+          container = binded && federation._mfGetContainer(binded.container);
           if (!container) {
             if (parentId) {
               console.warn(
@@ -476,21 +476,11 @@ function createObject() {
 
     /**
      *
-     * @param name
-     * @returns
-     */
-    /*@__MANGLE_PROP__*/
-    private getContainer(name: string) {
-      return this.$C[containerNameToId(name)];
-    }
-
-    /**
-     *
      * @param id
      * @returns
      */
     /*@__MANGLE_PROP__*/
-    private getUrlForId(id: string): string {
+    getUrlForId(id: string): string {
       if (startsWithDotSlash(id)) {
         return this.$iU[id.slice(2)];
       }
@@ -535,11 +525,24 @@ function createObject() {
     /**
      *
      * @param id
+     * @returns
+     */
+    /*@__MANGLE_PROP__*/
+    private getBindForId(id: string): MFBinding {
+      if (startsWithDotSlash(id)) {
+        return this.$B[id.slice(2)];
+      }
+      return this.$B[id];
+    }
+
+    /**
+     *
+     * @param id
      * @param parentUrl
      * @param meta
      * @returns
      */
-    import(id: string, parentUrl: string, meta: any) {
+    import(id: string, parentUrl: string, meta?: any) {
       return this._System.import(id, parentUrl, meta);
     }
 
@@ -574,15 +577,11 @@ function createObject() {
 
     /**
      *
-     * @param id
+     * @param name
      * @returns
      */
-    /*@__MANGLE_PROP__*/
-    private getBindForId(id: string): MFBinding {
-      if (startsWithDotSlash(id)) {
-        return this.$B[id.slice(2)];
-      }
-      return this.$B[id];
+    _mfGetContainer(name: string) {
+      return this.$C[containerNameToId(name)];
     }
 
     /**
@@ -758,10 +757,15 @@ function createObject() {
      * ID FederationJS given to the container, derived from name
      */
     id: string;
+    /** default scope name for this container */
     scope: string;
+    /** share config */
     $SC: ShareConfig;
 
+    /** the share scope object from the federation this container is sharing modules to/from */
     $SS: ShareScope;
+    /** exposed modules */
+    $E: Record<string, string>;
     /**
      * The FederationJS runtime
      */
@@ -775,9 +779,11 @@ function createObject() {
       this.scope = scopeName;
       this.id = id;
       this.name = name;
+      /*@__MANGLE_PROP__*/
       this.Fed = federation || _global.Federation;
 
       this.$SC = createObject();
+      this.$E = createObject();
     }
 
     /**
@@ -823,8 +829,21 @@ function createObject() {
     /**
      * add expose
      */
-    _E(key: string, uniqId: string): void {
-      //
+    _E(key: string, chunkId: any): void {
+      this.$E[key] = chunkId.id;
+    }
+
+    /**
+     *
+     * @param name
+     * @returns
+     */
+    _mfGet(name: string): Promise<unknown> {
+      const parentUrl = this.Fed.getUrlForId(this.id);
+      const id = this.$E[name] || name;
+      return this.Fed.import(id, parentUrl).then((_m: unknown) => {
+        return () => _m;
+      });
     }
 
     /**
