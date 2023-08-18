@@ -108,6 +108,19 @@ type ShareConfig = {
   };
 };
 
+/**
+ * Add share options
+ */
+type AddShareOptions = {
+  singleton?: boolean;
+  requiredVersion?: string;
+  eager?: boolean;
+  import?: string | boolean;
+  shareScope?: string;
+};
+
+type ShareSpec = [spec: { id: string } & string, ver: string][];
+
 const hasDocument = typeof document !== "undefined";
 
 /**
@@ -561,18 +574,22 @@ function createObject() {
         return this.sysRegister.apply(this._System, arguments);
       }
 
+      let url = "";
       if (typeof deps !== "string") {
         const currentScr: any = getCurrentScript();
         if (currentScr) {
+          console.debug(`federation register`, id, currentScr.src);
+          url = currentScr.src;
           this.addIdUrlMap(id, currentScr.src);
         } else {
           console.debug(
             "federation register",
             name,
-            "- no current script url detected, register name:"
+            "- no current script url detected"
           );
         }
       }
+
       return this.sysRegister.apply(this._System, [deps, declare, meta]);
     }
 
@@ -801,7 +818,7 @@ function createObject() {
     /**
      * add share
      */
-    _S(key: string, options: any, shared: any): void {
+    _S(key: string, options: AddShareOptions, shared: ShareSpec[]): void {
       const scope = options.shareScope || this.scope;
       let _sm = this.$SC[key];
       if (!_sm) {
@@ -839,7 +856,7 @@ function createObject() {
      * @param name
      * @returns
      */
-    _mfGet(name: string): Promise<unknown> {
+    _mfGet(name: string): Promise<() => unknown> {
       const parentUrl = this.Fed.getUrlForId(this.id);
       const id = this.$E[name] || name;
       return this.Fed.import(id, parentUrl).then((_m: unknown) => {
@@ -850,7 +867,11 @@ function createObject() {
     /**
      *
      */
-    _mfInit(shareScope?: any): any {
+    _mfInit(shareScope?: ShareScope): ShareScope | undefined {
+      if (this.$SS) {
+        console.warn(`container`, this.id, `already initialized`);
+        return undefined;
+      }
       return (this.$SS = this.Fed._mfInitScope(this.scope, shareScope));
     }
   }

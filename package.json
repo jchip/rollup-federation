@@ -6,7 +6,11 @@
   "homepage": "",
   "license": "UNLICENSED",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "bootstrap": "npm run nm && xrun certs build",
+    "nm": "[ -e node_modules ] || npx fyn",
+    "build": "fynpo",
+    "start": "node public/dev-proxy.mjs",
+    "certs": "node certs/tx.js"
   },
   "author": "",
   "files": [
@@ -19,14 +23,11 @@
     "type": "git",
     "url": ""
   },
-  "fyn": {
-    "dependencies": {
-      "fynpo": "../pub/fynpo/packages/fynpo"
-    }
-  },
   "dependencies": {
     "@jchip/redbird": "^1.3.0",
+    "@xarc/run": "^1.1.1",
     "chalker": "^1.2.0",
-    "fynpo": "^1.1.43"
+    "fynpo": "^1.1.43",
+    "systemjs": "^6.14.2"
   }
 }

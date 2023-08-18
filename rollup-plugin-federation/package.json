@@ -7,7 +7,9 @@
   "license": "UNLICENSED",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc"
+    "build": "xrun -s clean compile",
+    "compile": "tsc",
+    "clean": "rm -rf dist"
   },
   "author": "",
   "files": [
@@ -29,10 +31,12 @@
     "@rollup/pluginutils": "^5.0.2",
     "@types/lodash-es": "^4.17.8",
     "@types/node": "^20.4.4",
+    "@xarc/run": "^1.1.1",
     "rollup": "^3.26.2",
     "typescript": "^5.1.6"
   },
   "dependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.0",
     "lodash-es": "^4.17.21",
     "pkg-up": "^4.0.0",
     "read-pkg-up": "^10.0.0",

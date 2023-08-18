@@ -406,6 +406,7 @@ export function init(_shareScope) {
   };
 
   var _ss = ${CONTAINER_VAR}._mfInit(_shareScope);
+  if (!_ss) return ${CONTAINER_VAR}.$SS;
 
   // container._S => addShare
 ${genAddShareCode()}

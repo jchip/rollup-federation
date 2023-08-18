@@ -14,3 +14,5 @@ plugins
 systemjs
 currentExecutingScript
 .*-cache
+certs/dev.cer
+certs/dev.key

@@ -7,7 +7,9 @@
   "homepage": "",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "parcel build",
+    "build": "xrun -s clean parcel minify",
+    "clean": "rm -rf dist",
+    "parcel": "parcel build",
     "minify": "terser --config-file .terserrc -o dist/federation-js.min.js -- dist/federation-js.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -26,6 +28,7 @@
     "@parcel/config-default": "^2.9.3",
     "@parcel/transformer-typescript-tsc": "^2.9.3",
     "@types/node": "^20.4.7",
+    "@xarc/run": "^1.1.1",
     "parcel": "^2.9.3",
     "terser": "^5.19.2",
     "typescript": "^5.1.6"

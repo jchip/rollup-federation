@@ -25,7 +25,8 @@ startDevProxy([
     {
       host: "",
       protocol: "file",
-      path: Path.join(rootDir, "/systemjs/dist"),
+      // path: Path.join(rootDir, "/systemjs/dist"),
+      path: Path.join(rootDir, "node_modules/systemjs/dist"),
       port: 0,
     },
   ],

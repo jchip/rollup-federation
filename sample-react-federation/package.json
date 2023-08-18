@@ -6,7 +6,9 @@
   "homepage": "",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "rollup -c",
+    "build": "xrun -s clean rollup",
+    "clean": "rm -rf dist",
+    "rollup": "rollup -c",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -20,20 +22,11 @@
     "type": "git",
     "url": ""
   },
-  "fyn": {
-    "devDependencies": {
-      "rollup": "../rollup",
-      "rollup-plugin-federation": "../rollup-plugin-federation"
-    },
-    "dependencies": {
-      "@rollup/plugin-node-resolve": "../plugins/packages/node-resolve"
-    }
-  },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.3",
-    "@rollup/plugin-node-resolve": "^15.1.0",
     "@rollup/plugin-replace": "^5.0.2",
     "@rollup/plugin-terser": "^0.4.3",
+    "@xarc/run": "^1.1.1",
     "react": "^18.1.0",
     "react-dom": "^18.1.0",
     "rollup": "^3.26.2",
@@ -41,7 +34,6 @@
     "typescript": "^5.1.6"
   },
   "dependencies": {
-    "@rollup/plugin-node-resolve": "^15.1.0",
     "share-a": "2",
     "share-a-nest": "^1.0.0",
     "share-a-nest-2": "^1.0.0",

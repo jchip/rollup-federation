@@ -8,15 +8,16 @@
     <title>Rollup code-splitting demo</title>
 
     <link rel="stylesheet" href="styles.css" />
-    <script src="/systemjs/s.min.js"></script>
+    <script src="/systemjs/s.js"></script>
     <script src="/federationjs/dist/federation-js.js"></script>
 
-    <!-- <script src="/react/dist/plugin-entry.js"></script>
-    <script src="/react-b/dist/plugin-entry.js"></script> -->
+    <!-- <script src="/react/dist/plugfyn in-entry.js"></script> -->
+    <!-- <script src="/react-b/dist/plugin-entry.js"></script> -->
 
     <script>
-      // Federation.randomSource = true;
-      (async function () {
+      Federation.randomSource = true;
+      (async function blah() {
+        // await new Promise((resolve) => setTimeout(resolve, 5000));
         // console.log("importing plugin containers");
         const [a, b] = await Promise.all([
           Federation.import("/react/dist/plugin-entry.js"),
@@ -25,8 +26,17 @@
           // Federation.import("__mf_container_plugin_2"),
         ]);
 
+        // const [a1, b1] = await Promise.all([
+        //   Federation.import("/react/dist/plugin-entry.js"),
+        //   Federation.import("/react-b/dist/plugin-entry.js"),
+        //   // Federation.import("__mf_container_plugin_1"),
+        //   // Federation.import("__mf_container_plugin_2"),
+        // ]);
+
         a.init();
         b.init();
+        // b.init();
+
         await Federation.import("/react/dist/main-a.js");
         await Federation.import("/react-b/dist/main-a.js");
       })();
