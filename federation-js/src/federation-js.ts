@@ -217,116 +217,14 @@ function createObject() {
         id: string,
         parentURL: string,
         meta: unknown
-      ) {
+      ): string {
         const url = federation.getUrlForId(id);
         if (url) {
           console.debug("resolve with id to url", id, url);
           return url;
         }
 
-        const parentId = federation.getIdForUrl(parentURL);
-        let container = parentId && federation._mfGetContainer(parentId);
-        let rvmMapData: string[];
-        if (!container) {
-          const binded = parentId && federation.getBindForId(parentId);
-          container = binded && federation._mfGetContainer(binded.container);
-          if (!container) {
-            if (parentId) {
-              console.warn(
-                "Unable to find a binded object for a parent id",
-                parentId,
-                "url",
-                parentURL
-              );
-            }
-
-            return federation.sysResolve.call(this, id, parentURL, meta);
-          }
-          rvmMapData = binded.mapData;
-          console.debug(
-            "resolve bind parent of",
-            id,
-            binded,
-            `\ncontainer`,
-            container,
-            "\nget original import name from id to check for federation",
-            id
-          );
-        }
-
-        // time to federate
-        // 1. get original import name from id
-
-        const { n: importName, v: importVersion } =
-          federation.findImportSpecFromId(id, container);
-
-        if (!importName) {
-          console.debug("no import name found for id", id, "no federation");
-          return federation.sysResolve.call(this, id, parentURL, meta);
-        }
-
-        // 2. get required version from container.$SC.rvm and binded.mapData
-        const requiredVersion = federation.matchRvm(
-          importName,
-          container,
-          rvmMapData
-        );
-
-        // 3. match existing loaded module from shared info
-
-        const shareMeta = federation.$SS[container.scope]?.[importName];
-
-        const matchedVersion = requiredVersion
-          ? federation.semverMatch(
-              importName,
-              shareMeta,
-              requiredVersion,
-              true,
-              importVersion
-            )
-          : importVersion;
-
-        const shareInfo =
-          shareMeta && shareMeta[matchedVersion || firstKey(shareMeta)];
-
-        let shareId = id;
-        let shareParentUrl = parentURL;
-
-        if (shareInfo) {
-          if (shareInfo.url) {
-            console.debug("found shared", importName, "url", shareInfo.url);
-            federation.addIdUrlMap(id, shareInfo.url);
-            return shareInfo.url;
-          }
-
-          const source = federation.pickShareSource(shareInfo);
-
-          source.loaded = true;
-          // The container registered the share info, so the id is
-          // relative to the container's URL.
-          shareParentUrl = federation.getUrlForId(
-            containerNameToId(source.container)
-          );
-          shareId = source.id;
-        }
-
-        const resolved = federation.sysResolve.call(
-          this,
-          shareId,
-          shareParentUrl,
-          meta
-        );
-
-        federation.addIdUrlMap(shareId, resolved);
-        if (id !== shareId) {
-          federation.addIdUrlMap(id, resolved);
-        }
-
-        if (shareInfo) {
-          shareInfo.url = resolved;
-        }
-
-        return resolved;
+        return federation.resolve(id, parentURL, meta);
       };
 
       // const _import = systemJSPrototype.import;
@@ -345,6 +243,124 @@ function createObject() {
       this.$C = createObject();
       this.$B = createObject();
       this.$SS = createObject();
+    }
+
+    /**
+     *
+     * @param id
+     * @param parentURL
+     * @param meta
+     * @returns
+     */
+    resolve(id: string, parentURL: string, meta?: unknown): string {
+      const federation = this;
+      const parentId = federation.getIdForUrl(parentURL);
+      let container = parentId && federation._mfGetContainer(parentId);
+      let rvmMapData: string[];
+      if (!container) {
+        const binded = parentId && federation.getBindForId(parentId);
+        container = binded && federation._mfGetContainer(binded.container);
+        if (!container) {
+          if (parentId) {
+            console.warn(
+              "Unable to find a binded object for a parent id",
+              parentId,
+              "url",
+              parentURL
+            );
+          }
+          return federation.sysResolve.call(this, id, parentURL, meta);
+        }
+        rvmMapData = binded.mapData;
+        console.debug(
+          "resolve bind parent of",
+          id,
+          binded,
+          `\ncontainer`,
+          container,
+          "\nget original import name from id to check for federation",
+          id
+        );
+      }
+
+      // time to federate
+      // 1. get original import name from id
+
+      const { n: importName, v: importVersion } =
+        federation.findImportSpecFromId(id, container);
+
+      if (!importName) {
+        console.debug("no import name found for id", id, "no federation");
+        return federation.sysResolve.call(
+          federation._System,
+          id,
+          parentURL,
+          meta
+        );
+      }
+
+      // 2. get required version from container.$SC.rvm and binded.mapData
+      const requiredVersion = federation.matchRvm(
+        importName,
+        container,
+        rvmMapData
+      );
+
+      // 3. match existing loaded module from shared info
+
+      const shareMeta = federation.$SS[container.scope]?.[importName];
+
+      const matchedVersion = requiredVersion
+        ? federation.semverMatch(
+            importName,
+            shareMeta,
+            requiredVersion,
+            true,
+            importVersion
+          )
+        : importVersion;
+
+      const shareInfo =
+        shareMeta && shareMeta[matchedVersion || firstKey(shareMeta)];
+
+      let shareId = id;
+      let shareParentUrl = parentURL;
+
+      if (shareInfo) {
+        if (shareInfo.url) {
+          console.debug("found shared", importName, "url", shareInfo.url);
+          federation.addIdUrlMap(id, shareInfo.url);
+          return shareInfo.url;
+        }
+
+        const source = federation.pickShareSource(shareInfo);
+
+        source.loaded = true;
+        // The container registered the share info, so the id is
+        // relative to the container's URL.
+        shareParentUrl = federation.getUrlForId(
+          containerNameToId(source.container)
+        );
+        shareId = source.id;
+      }
+
+      const resolved = federation.sysResolve.call(
+        this,
+        shareId,
+        shareParentUrl,
+        meta
+      );
+
+      federation.addIdUrlMap(shareId, resolved);
+      if (id !== shareId) {
+        federation.addIdUrlMap(id, resolved);
+      }
+
+      if (shareInfo) {
+        shareInfo.url = resolved;
+      }
+
+      return resolved;
     }
 
     /**
@@ -563,6 +579,33 @@ function createObject() {
     /**
      *
      * @param id
+     * @param containerName
+     */
+    _mfLoaded(id: string, containerName: string) {
+      const container = this._mfGetContainer(containerName);
+      const { n, v } = this.findImportSpecFromId(id, container);
+      const shareInfo = n && v && this.$SS[container.scope]?.[n][v];
+      if (shareInfo) {
+        for (let ix = 0; ix < shareInfo.sources.length; ix++) {
+          if (shareInfo.sources[ix].id === id) {
+            shareInfo.sources[ix].loaded = true;
+            if (!shareInfo.url) {
+              shareInfo.srcIdx = ix;
+              shareInfo.url = this.sysResolve.call(
+                this._System,
+                id,
+                this.getUrlForId(container.id)
+              );
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    /**
+     *
+     * @param id
      * @param dep
      * @param declare
      * @param metas
@@ -574,12 +617,10 @@ function createObject() {
         return this.sysRegister.apply(this._System, arguments);
       }
 
-      let url = "";
       if (typeof deps !== "string") {
         const currentScr: any = getCurrentScript();
         if (currentScr) {
           console.debug(`federation register`, id, currentScr.src);
-          url = currentScr.src;
           this.addIdUrlMap(id, currentScr.src);
         } else {
           console.debug(
@@ -645,7 +686,10 @@ function createObject() {
         scopeName: options.s,
         mapData,
         register(dep, declare, metas) {
-          return _F.register(id, dep, declare, metas);
+          const r = _F.register(id, dep, declare, metas);
+          console.debug("resolving bind register to fill share scope", id);
+          _F._mfLoaded("./" + id, options.c);
+          return r;
         },
       };
 
