@@ -176,7 +176,7 @@ function containerNameToId(name: string): string {
   return containerSigPrefix + name;
 }
 
-function createObject() {
+function createObject<T = any>(): T {
   return Object.create(null);
 }
 
@@ -586,19 +586,15 @@ function createObject() {
       const { n, v } = this.findImportSpecFromId(id, container);
       const shareInfo = n && v && this.$SS[container.scope]?.[n][v];
       if (shareInfo) {
-        for (let ix = 0; ix < shareInfo.sources.length; ix++) {
-          if (shareInfo.sources[ix].id === id) {
-            shareInfo.sources[ix].loaded = true;
-            if (!shareInfo.url) {
-              shareInfo.srcIdx = ix;
-              shareInfo.url = this.sysResolve.call(
-                this._System,
-                id,
-                this.getUrlForId(container.id)
-              );
-            }
-            break;
-          }
+        const ix = shareInfo.sources.findIndex((s) => s.id === id);
+        shareInfo.sources[ix].loaded = true;
+        if (!shareInfo.url) {
+          shareInfo.srcIdx = ix;
+          shareInfo.url = this.sysResolve.call(
+            this._System,
+            id,
+            this.getUrlForId(container.id)
+          );
         }
       }
     }
@@ -797,7 +793,7 @@ function createObject() {
      * @param scope
      * @param shareScope
      */
-    _mfInitScope(scope: string, shareScope?: any): any {
+    _mfInitScope(scope: string, shareScope?: ShareScope): ShareScope {
       const _ss =
         this.$SS[scope] || (this.$SS[scope] = shareScope || createObject());
       if (shareScope && _ss !== shareScope) {
