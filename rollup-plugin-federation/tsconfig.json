@@ -9,7 +9,7 @@
     "strict": true,
     "outDir": "dist",
     "jsx": "react",
-    "module": "ES2020",
+    "module": "NodeNext",
     "esModuleInterop": false,
     "importHelpers": false,
     "target": "ES2020",
