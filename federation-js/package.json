@@ -9,7 +9,7 @@
   "scripts": {
     "build": "xrun -s clean parcel minify",
     "clean": "rm -rf dist",
-    "parcel": "parcel build",
+    "parcel": "parcel build --no-cache",
     "minify": "terser --config-file .terserrc -o dist/federation-js.min.js -- dist/federation-js.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

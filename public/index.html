@@ -11,6 +11,7 @@
     <script src="/systemjs/s.js"></script>
     <script src="/federationjs/dist/federation-js.js"></script>
 
+    <script src="/react/dist/all-index.js"></script>
     <!-- <script src="/react/dist/plugin-entry.js"></script> -->
     <!-- <script src="/react-b/dist/plugin-entry.js"></script> -->
 
@@ -37,10 +38,12 @@
         b.init();
         // b.init();
 
+        // await Promise.all([Federation.import("/react/dist/all-index.js")]);
+
         await Promise.all([
           Federation.import("/react/dist/main-a.js"),
           Federation.import("/react-b/dist/main-a.js"),
-          Federation.import("/react/dist/index-570716ed.js"),
+          // Federation.import("/react/dist/index-570716ed.js"),
         ]);
         (
           await Federation._mfImport("share-no-ref", "test", "1")

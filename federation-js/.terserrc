@@ -12,6 +12,8 @@
     }
   },
   "compress": {
+    "passes": 3,
+    "toplevel": true,
     "pure_funcs": [
       "console.debug"
     ]

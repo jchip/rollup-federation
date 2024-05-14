@@ -25,11 +25,22 @@ import { satisfy, parseRange } from "./semver";
 type MFBinding = {
   name: string;
   id?: string;
+  /**
+   * name of the script that created the module bind
+   */
+  src?: string;
   fileName: string;
   container: string;
   scopeName: string;
   mapData: string[];
   register: (dep: any, declare: any, metas: any) => unknown;
+  _register: (
+    id: any,
+    deps: any,
+    declare: any,
+    metas: any,
+    src: any
+  ) => unknown;
 };
 
 type BindOptions = {
@@ -53,7 +64,18 @@ type ShareSource = {
 
 type ShareInfo = {
   sources: ShareSource[];
+  /**
+   * url of the file that provided the shared module.
+   * Having this url means someone has provided a copy of the shared
+   * module, and it's loaded from the url.
+   */
   url?: string;
+  /**
+   * id of the chunk that provided the shared module
+   * Having this means a copy of the shared module is available, provided
+   * by the chunk of the id.
+   */
+  id?: string;
   srcIdx?: number;
 };
 
@@ -121,6 +143,14 @@ type AddShareOptions = {
 
 type ShareSpec = [spec: { id: string } & string, ver: string][];
 
+/**
+ *
+ */
+type RegDef = {
+  url: string;
+  def?: unknown;
+};
+
 const hasDocument = typeof document !== "undefined";
 
 /**
@@ -156,9 +186,22 @@ function startsWithDotSlash(id: string) {
 /**
  *
  * @param obj
+ * @param k
+ * @param elem
+ */
+function addElementToArrayInObject<T>(
+  obj: T,
+  k: string,
+  elem: unknown
+): boolean {
+  return !(obj[k] || (obj[k] = [])).includes(elem) && obj[k].push(elem);
+}
+/**
+ *
+ * @param obj
  * @returns
  */
-function firstKey(obj: any) {
+function firstObjectKey(obj: any) {
   return Object.keys(obj)[0];
 }
 
@@ -191,10 +234,13 @@ function createObject<T = any>(): T {
     private $SS: ShareStore;
     private sysResolve: any;
     private sysRegister: any;
+    private sysInstantiate: any;
     /** ID to URL mapping */
-    private $iU: Record<string, string>;
+    private $iU: Record<string, RegDef>;
     /** URL to ID mapping */
-    private $uI: Record<string, string>;
+    private $uI: Record<string, string[]>;
+    /** pending module load waiting for container */
+    private $pC: Record<string, any>;
     randomSource?: boolean;
 
     /**
@@ -208,8 +254,11 @@ function createObject<T = any>(): T {
       this.sysResolve = systemJSPrototype.resolve;
       /*@__MANGLE_PROP__*/
       this.sysRegister = systemJSPrototype.register;
+      /*@__MANGLE_PROP__*/
+      this.sysInstantiate = systemJSPrototype.instantiate;
       this.$iU = createObject();
       this.$uI = createObject();
+      this.$pC = createObject();
 
       const federation = this;
 
@@ -218,13 +267,40 @@ function createObject<T = any>(): T {
         parentURL: string,
         meta: unknown
       ): string {
-        const url = federation.getUrlForId(id);
-        if (url) {
-          console.debug("resolve with id to url", id, url);
-          return url;
+        const rd = federation.getRegDefForId(id);
+
+        if (rd) {
+          // module already available and registered with its definitions
+          // so just return the id to do lookup, and not url for fetching
+          if (rd.def) {
+            return id;
+          }
+          console.debug("resolve with id to url", id, rd.url);
+          if (rd.url) {
+            return rd.url;
+          }
         }
 
-        return federation.resolve(id, parentURL, meta);
+        const r = federation.resolve(id, parentURL, meta);
+        return r;
+      };
+
+      systemJSPrototype.instantiate = function (
+        url: string,
+        _parentURL: string,
+        _meta: any
+      ) {
+        const rd = federation.getRegDefForId(url);
+        const def = rd && rd.def;
+        if (def) {
+          if (def !== 1) {
+            rd.def = 1;
+            return def;
+          }
+          console.error("reg def already used for", url);
+        }
+
+        return federation.sysInstantiate.apply(federation._System, arguments);
       };
 
       // const _import = systemJSPrototype.import;
@@ -308,7 +384,8 @@ function createObject<T = any>(): T {
 
       // 3. match existing loaded module from shared info
 
-      const shareMeta = federation.$SS[container.scope]?.[importName];
+      const scope = federation.$SS[container.scope];
+      const shareMeta = scope && scope[importName];
 
       const matchedVersion = requiredVersion
         ? federation.semverMatch(
@@ -321,7 +398,7 @@ function createObject<T = any>(): T {
         : importVersion;
 
       const shareInfo =
-        shareMeta && shareMeta[matchedVersion || firstKey(shareMeta)];
+        shareMeta && shareMeta[matchedVersion || firstObjectKey(shareMeta)];
 
       let shareId = id;
       let shareParentUrl = parentURL;
@@ -378,7 +455,7 @@ function createObject<T = any>(): T {
       if (_SS[id]) {
         // import is using original import id
         importName = id;
-        importVersion = firstKey(_SS[id].versions);
+        importVersion = firstObjectKey(_SS[id].versions);
       } else {
         for (const name in _SS) {
           const _sm = _SS[name];
@@ -417,7 +494,8 @@ function createObject<T = any>(): T {
       container: Container,
       rvmMapData: string[]
     ): string {
-      const rvm = container.$SC[importName]?.rvm;
+      const sc = container.$SC[importName];
+      const rvm = sc && sc.rvm;
       if (rvm && rvmMapData) {
         for (const _src of rvmMapData) {
           if (rvm[_src]) {
@@ -511,10 +589,18 @@ function createObject<T = any>(): T {
      */
     /*@__MANGLE_PROP__*/
     getUrlForId(id: string): string {
-      if (startsWithDotSlash(id)) {
-        return this.$iU[id.slice(2)];
-      }
-      return this.$iU[id];
+      const rd = this.getRegDefForId(id);
+      return rd && rd.url;
+    }
+
+    /**
+     *
+     * @param id
+     * @returns
+     */
+    /*@__MANGLE_PROP__*/
+    getRegDefForId(id: string): RegDef {
+      return this.$iU[startsWithDotSlash(id) ? id.slice(2) : id];
     }
 
     /**
@@ -524,7 +610,7 @@ function createObject<T = any>(): T {
      */
     /*@__MANGLE_PROP__*/
     private getIdForUrl(url: string): string {
-      return this.$uI[url];
+      return this.$uI[url] && this.$uI[url][0];
     }
 
     /**
@@ -533,7 +619,7 @@ function createObject<T = any>(): T {
      * @param url
      */
     /*@__MANGLE_PROP__*/
-    private addIdUrlMap(id: string, url: string): boolean {
+    private addIdUrlMap(id: string, url: string, def?: unknown): boolean {
       if (url !== id) {
         let id2 = id;
         if (startsWithDotSlash(id)) {
@@ -541,12 +627,10 @@ function createObject<T = any>(): T {
         }
 
         if (!this.$iU[id2]) {
-          this.$iU[id2] = url;
+          this.$iU[id2] = { url, def };
         }
 
-        if (!this.$uI[url]) {
-          this.$uI[url] = id;
-        }
+        addElementToArrayInObject(this.$uI, url, id);
         return true;
       }
       return false;
@@ -584,22 +668,40 @@ function createObject<T = any>(): T {
     _mfLoaded(id: string, containerName: string) {
       const container = this._mfGetContainer(containerName);
       const { n, v } = this.findImportSpecFromId(id, container);
-      const shareInfo = n && v && this.$SS[container.scope]?.[n][v];
+      const sc = n && v && this.$SS[container.scope];
+      const shareInfo = sc && sc[n][v];
       if (shareInfo) {
         const ix = shareInfo.sources.findIndex((s) => s.id === id);
         shareInfo.sources[ix].loaded = true;
         if (!shareInfo.url) {
           shareInfo.srcIdx = ix;
-          shareInfo.url = this.sysResolve.call(
-            this._System,
-            id,
-            this.getUrlForId(container.id)
-          );
+          shareInfo.id = id;
+          const rd = this.getRegDefForId(id);
+          if (!rd) {
+            shareInfo.url = this.sysResolve.call(
+              this._System,
+              id,
+              // we expect module bundle file to reside at the same location as the
+              // container entry file, so we get container url from its id, and use it
+              // as base and add module file id to construct the module's url
+              this.getUrlForId(container.id)
+            );
+          } else {
+            shareInfo.url = id;
+          }
         }
       }
     }
 
     /**
+     * Register a module.
+     *
+     * - `id` - A module needs an *unique* id to register.  The id could be
+     * the full URL or path of the file containing the module.
+     * - `currentScript` - `document.currentScript` is the standard way to
+     * get the URL.
+     * - `federation` - If a file has multiple modules, then only the first
+     * one can use the URL, and subsequent ones need to provide an id.
      *
      * @param id
      * @param dep
@@ -607,29 +709,54 @@ function createObject<T = any>(): T {
      * @param metas
      * @returns
      */
-    register(id: any, deps: any, declare: any, meta: any): unknown {
+    register(
+      id: any,
+      deps: any,
+      declare: any,
+      meta: any,
+      src?: string
+    ): unknown {
       if (typeof id !== "string") {
-        console.debug("no name for register");
+        console.debug("federation - no name for register - using original");
         return this.sysRegister.apply(this._System, arguments);
       }
 
-      if (typeof deps !== "string") {
-        const currentScr: any = getCurrentScript();
-        if (currentScr) {
-          console.debug(`federation register`, id, currentScr.src);
-          this.addIdUrlMap(id, currentScr.src);
-        } else {
-          console.debug(
-            "federation register",
-            name,
-            "- no current script url detected"
-          );
-        }
-      }
+      const currentScr: any = getCurrentScript();
+      const url = currentScr && currentScr.src;
+      console.debug(`federation register - id:`, id, "url:", url);
+      const def = [deps, declare, meta];
+      this.addIdUrlMap(id, url, def);
 
-      return this.sysRegister.apply(this._System, [deps, declare, meta]);
+      return this.sysRegister.apply(this._System, def);
     }
 
+    /**
+     *
+     * @param name - container name
+     */
+    /*@__MANGLE_PROP__*/
+    _checkPendingRegs(name: string) {
+      const pC = this.$pC;
+      const pendingRegs = pC[name];
+      if (pendingRegs) {
+        delete pC[name];
+        if (!firstObjectKey(pC)) {
+          // reset pending object
+          this.$pC = createObject();
+        }
+        setTimeout(() => {
+          for (const pR of pendingRegs) {
+            console.debug(
+              `loading deferred module`,
+              pR.id,
+              "for container",
+              name
+            );
+            pR.l();
+          }
+        });
+      }
+    }
     /**
      *
      * @param name
@@ -675,17 +802,40 @@ function createObject<T = any>(): T {
       //   );
       // }
 
+      const curScr: any = getCurrentScript();
+      const src = curScr && curScr.src;
       const binded: MFBinding = {
         name: options.n,
+        src,
         fileName: options.f,
         container: options.c,
         scopeName: options.s,
         mapData,
-        register(dep, declare, metas) {
-          const r = _F.register(id, dep, declare, metas);
+        _register(_id, dep, declare, metas, _src) {
+          const r = _F.register(id, dep, declare, metas, _src || src);
           console.debug("resolving bind register to fill share scope", id);
           _F._mfLoaded("./" + id, options.c);
           return r;
+        },
+        register(dep, declare, metas, _src?: string) {
+          if (!_F._mfGetContainer(options.c)) {
+            if (
+              addElementToArrayInObject(_F.$pC, options.c, {
+                id,
+                l: () => this._register(id, dep, declare, metas, src),
+              })
+            ) {
+              console.debug(
+                "defer register module",
+                id,
+                "pending container",
+                options.c
+              );
+            }
+            return;
+          }
+          //
+          return this._register(id, dep, declare, metas, _src);
         },
       };
 
@@ -732,12 +882,13 @@ function createObject<T = any>(): T {
       semver?: string,
       fallbackToFirst?: boolean
     ) {
-      const shareMeta = this.$SS[scope]?.[name];
+      const sc = this.$SS[scope];
+      const shareMeta = sc && sc[name];
       if (shareMeta) {
         let matchedVersion =
           semver && this.semverMatch(name, shareMeta, semver, false);
         if (!matchedVersion && (!semver || fallbackToFirst)) {
-          matchedVersion = firstKey(shareMeta);
+          matchedVersion = firstObjectKey(shareMeta);
         }
         const shareInfo = shareMeta[matchedVersion];
 
@@ -776,15 +927,13 @@ function createObject<T = any>(): T {
       const _ss = this.$SS[scope];
       const _sm = _ss[key] || (_ss[key] = createObject());
       const _si = _sm[version] || (_sm[version] = createObject());
-      if (_si.sources) {
-        console.debug(
-          `adding share source from container`,
-          container,
-          scope + ":" + key + ":" + version
-        );
-        _si.sources.push({ id, container });
-      } else {
-        _si.sources = [{ id, container }];
+      if (addElementToArrayInObject(_si, "sources", { id, container })) {
+        _si.sources.length > 1 &&
+          console.debug(
+            `adding share source from container`,
+            container,
+            scope + ":" + key + ":" + version
+          );
       }
     }
 
@@ -852,6 +1001,7 @@ function createObject<T = any>(): T {
      * @returns
      */
     register(dep: string[], declare: any, metas: any): unknown {
+      this.Fed._checkPendingRegs(this.name);
       return this.Fed.register(this.id, dep, declare, metas);
     }
 
@@ -862,7 +1012,11 @@ function createObject<T = any>(): T {
       const scope = options.shareScope || this.scope;
       let _sm = this.$SC[key];
       if (!_sm) {
-        _sm = this.$SC[key] = { options, rvm: {}, versions: {} };
+        _sm = this.$SC[key] = {
+          options,
+          rvm: createObject(),
+          versions: createObject(),
+        };
       }
       for (const _s of shared) {
         // first entry is chunk bundle and version
