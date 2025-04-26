@@ -10,10 +10,65 @@ import { dirname, isAbsolute, resolve, relative } from "node:path";
 // import { pkgUp } from "pkg-up";
 import { readPackageUpSync } from "read-pkg-up";
 
+/**
+ * Simple return type for the version info
+ */
+type VersionInfo = {
+  ver?: string;
+  path: string;
+  section?: string;
+  version: string;
+};
+
+/**
+ * Type definition for the alarm mechanism used for timing coordination
+ */
+type ModuleWaitAlarm = {
+  reset: (wait?: number) => void;
+  cancel: () => void;
+  isArmed: () => boolean;
+  defer: ReturnType<typeof makeDefer>;
+  goneOff: number;
+  checkCnt: number;
+};
+
+/**
+ * Configuration options for the Module Federation plugin
+ */
+export type FederationPluginOptions = {
+  /** Name of this federation container */
+  name: string;
+  /** Output filename for the federation container */
+  filename: string;
+  /** Modules to be shared with other federation containers */
+  shared?: Record<string, any>;
+  /** Modules to be exposed to other federation containers */
+  exposes?: Record<string, string>;
+  /** Namespace for sharing modules */
+  shareScope?: string;
+  /** Whether to enable debug logging and output */
+  debugging?: boolean;
+};
+
 const CONTAINER_SIG = `_mf_container_`;
 const CONTAINER_PREFIX = `\0${CONTAINER_SIG}`;
 const CONTAINER_VAR = "_container";
 
+/**
+ * Creates a timing mechanism for coordination of asynchronous operations
+ *
+ * @param {number} wait - Initial wait time in milliseconds before the alarm triggers
+ * @param {Function} [condition] - Optional async function that returns a boolean indicating whether to resolve the alarm
+ * @returns {ModuleWaitAlarm} An alarm object with methods to reset, cancel, and check status
+ *
+ * The returned alarm object provides:
+ * - `reset(wait?)`: Resets the timer with optional new wait time
+ * - `cancel()`: Cancels the current timer
+ * - `isArmed()`: Checks if the timer is currently active
+ * - `defer`: Promise that resolves when the alarm goes off
+ * - `goneOff`: Counter for number of times the alarm has triggered
+ * - `checkCnt`: Counter for number of times the condition has been checked
+ */
 function makeAlarm(wait: number, condition?: () => Promise<boolean>) {
   let timeout: NodeJS.Timeout | undefined;
   const defer = makeDefer();
@@ -55,19 +110,43 @@ function makeAlarm(wait: number, condition?: () => Promise<boolean>) {
   };
 }
 
-export default function federation(_options: any): Plugin {
-  let lastModuleWait: any;
-  const entryId = CONTAINER_PREFIX + _options.name;
-  const filename = _options.filename;
-  const shared = _options.shared || {};
-  const shareScope = _options.shareScope || "default";
+/**
+ * Creates a Rollup plugin for Module Federation
+ *
+ * This plugin enables sharing modules between separate JavaScript applications at runtime.
+ * It implements the Module Federation pattern to allow for dynamic code splitting and sharing
+ * across independent builds.
+ *
+ * @param {FederationPluginOptions} options - Configuration options for the federation plugin
+ * @returns {Plugin} A Rollup plugin configured for module federation
+ */
+export default function federation(options: FederationPluginOptions): Plugin {
+  /**
+   * Module timing coordination mechanism that ensures proper container initialization
+   *
+   * This alarm mechanism serves several critical purposes:
+   * - Ensures all modules are resolved before finalizing the federation container
+   * - Coordinates the asynchronous module resolution process
+   * - Prevents race conditions where the container might be generated prematurely
+   * - Waits until the container entry is the only remaining unresolved module
+   * - Allows for complete dependency graph and version information collection
+   * - Provides synchronization between module discovery and container code generation
+   *
+   * The alarm resets its timer whenever new modules are processed and resolves
+   * when only the federation container entry point remains unresolved.
+   */
+  let lastModuleWait: ModuleWaitAlarm;
+  const entryId = CONTAINER_PREFIX + options.name;
+  const filename = options.filename;
+  const shared = options.shared || {};
+  const shareScope = options.shareScope || "default";
   const nmPathSig = "/node_modules/";
   const fynPathSig = "/node_modules/.f/_/";
   const collectedShares: Record<string, any> = {};
 
-  const debug = _options.debugging
+  const debug = options.debugging
     ? (...args: any[]) => console.log(...args)
-    : () => {};
+    : () => { };
 
   /**
    * From collected shares, we need:
@@ -111,8 +190,24 @@ export default function federation(_options: any): Plugin {
   return {
     name: "rollup-plugin-module-federation",
 
+    /**
+     * Intercepts module resolution requests to implement module federation.
+     *
+     * This hook is responsible for:
+     * 1. Identifying the container entry point and redirecting to the virtual entry ID
+     * 2. Tracking shared modules and their importers for version resolution
+     * 3. Collecting information about module relationships for federation mapping
+     * 4. Managing external module designation for shared dependencies
+     *
+     * @param {string} id - The module ID being resolved
+     * @param {string | undefined} importer - The module requesting the import (undefined for entry points)
+     * @param {Object} resolveOptions - Additional options from Rollup and other plugins
+     * @returns {null | {id: string, external?: boolean, moduleSideEffects?: string}}
+     *   - Returns the resolved ID information or null to defer to other resolvers
+     */
     resolveId(id: string, importer: string | undefined, resolveOptions) {
       if (lastModuleWait.isArmed()) {
+        // Reset alarm when resolving modules to delay container generation until all modules are discovered
         lastModuleWait.reset();
       }
 
@@ -198,6 +293,16 @@ export default function federation(_options: any): Plugin {
       return null;
     },
 
+    /**
+     * Initializes the plugin when the build starts
+     *
+     * Called by Rollup when the build process begins. This method:
+     * 1. Sets up a timeout mechanism to detect when all modules have been processed
+     * 2. Creates an alarm that waits for the entry module to be the only unresolved module
+     * 3. This timing mechanism helps ensure the federation container is properly initialized
+     *
+     * @this {import('rollup').PluginContext} - The plugin context provided by Rollup
+     */
     buildStart() {
       debug("buildStart");
       if (!lastModuleWait) {
@@ -220,6 +325,18 @@ export default function federation(_options: any): Plugin {
       // });
     },
 
+    /**
+     * Handles module content loading, especially for the federation container entry point
+     *
+     * This hook is responsible for:
+     * 1. Maintaining the module wait alarm to ensure proper timing
+     * 2. Generating the federation container code when all modules are resolved
+     * 3. Creating exports for shared and exposed modules
+     * 4. Building the initialization and runtime code for the container
+     *
+     * @param {string} id - The module ID being loaded
+     * @returns {Promise<string|null>} The module content if this is the entry point, null otherwise
+     */
     async load(id) {
       debug("load", id);
       if (
@@ -228,10 +345,12 @@ export default function federation(_options: any): Plugin {
         lastModuleWait.checkCnt === 0 &&
         Array.from(this.getModuleIds()).length > 1
       ) {
+        // Initialize or restart the alarm if modules are present but timer isn't running
         lastModuleWait.reset();
       }
 
       if (lastModuleWait.isArmed()) {
+        // Reset timer on each module load to prevent premature container generation
         lastModuleWait.reset();
       }
 
@@ -259,7 +378,7 @@ export default function federation(_options: any): Plugin {
 
           function genExposesCode() {
             const code = [];
-            const exposes = _options.exposes || {};
+            const exposes = options.exposes || {};
             for (const key in exposes) {
               code.push(
                 `  // ${exposes[key]}
@@ -269,8 +388,8 @@ export default function federation(_options: any): Plugin {
             return code.join("\n");
           }
 
-          function getNearestPackageVersion(id: string, cwd?: string) {
-            const pkg: any = readPackageUpSync({ cwd });
+          function getNearestPackageVersion(id: string, cwd?: string): VersionInfo {
+            const pkg = readPackageUpSync({ cwd });
 
             if (!pkg) {
               return { ver: "", path: "", version: "" };
@@ -287,13 +406,13 @@ export default function federation(_options: any): Plugin {
                   ver: pkg.packageJson[s][id],
                   path: pkg.path,
                   section: s,
-                  version: pkg.packageJson.version,
+                  version: pkg.packageJson.version || "",
                 };
               }
             }
             return {
               path: pkg.path,
-              version: pkg.packageJson.version,
+              version: pkg.packageJson.version || "",
             };
           }
 
@@ -452,7 +571,7 @@ export function get(name, version, scope) {
     banner(chunk) {
       const deZC = (s: string) => s.replace(/\0/g, "\\0");
 
-      const chunkS = !_options.debugging
+      const chunkS = !options.debugging
         ? ""
         : `/*
 exports: ${chunk.exports}
@@ -464,7 +583,7 @@ imports: ${chunk.imports}
 isEntry: ${chunk.isEntry}
 */
 `;
-      const myId = `_${CONTAINER_SIG}${_options.name}`;
+      const myId = `_${CONTAINER_SIG}${options.name}`;
       if (chunk.name === myId) {
         // debug("collected shares", JSON.stringify(collectedShares, null, 2));
         // const byImporterDir: any = {};
@@ -478,7 +597,7 @@ isEntry: ${chunk.isEntry}
         //   }
         // }
         // collectedShares[" byImporterDir"] = byImporterDir;
-        if (_options.debugging) {
+        if (options.debugging) {
           const source = JSON.stringify(collectedShares, null, 2) + "\n";
 
           this.emitFile({
@@ -502,7 +621,7 @@ isEntry: ${chunk.isEntry}
         return `${chunkS}(function (Federation){
 //
 var ${CONTAINER_VAR} = Federation._mfContainer(
-  '${_options.name}', // container name
+  '${options.name}', // container name
   '${shareScope}' // share scope name
 );
 //
@@ -532,13 +651,13 @@ var System = ${CONTAINER_VAR};
         );
       }
 
-      return `${chunkS}(function (Federation){ 
+      return `${chunkS}(function (Federation){
 //
 var System = Federation._mfBind(
   {
     n: '${chunk.name}', // chunk name
     f: '${chunk.fileName}', // chunk fileName
-    c: '${_options.name}', // federation container name
+    c: '${options.name}', // federation container name
     s: '${shareScope}', // default scope name
     e: ${chunk.isEntry} // chunk isEntry
   },
