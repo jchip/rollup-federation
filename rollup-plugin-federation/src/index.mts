@@ -38,7 +38,7 @@ type ModuleWaitAlarm = {
 export type FederationPluginOptions = {
   /** Name of this federation container */
   name: string;
-  /** Output filename for the federation container */
+  /** Output filename for the federation container.  You must also add filename to the input config array */
   filename: string;
   /** Modules to be shared with other federation containers */
   shared?: Record<string, any>;
