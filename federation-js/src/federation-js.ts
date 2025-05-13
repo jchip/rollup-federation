@@ -6,9 +6,9 @@ import { satisfy, parseRange } from "./semver";
     (this
       ? get()
       : (Object.defineProperty(Object.prototype, "_T_", {
-          configurable: true,
-          get: get,
-        }),
+        configurable: true,
+        get: get,
+      }),
         // @ts-ignore
         _T_));
   function get() {
@@ -275,7 +275,7 @@ function createObject<T = any>(): T {
           if (rd.def) {
             return id;
           }
-          console.debug("resolve with id to url", id, rd.url);
+          console.debug("resolve with id " + id + " to url", id, rd.url, "parentURL", parentURL, "meta", meta);
           if (rd.url) {
             return rd.url;
           }
@@ -334,17 +334,13 @@ function createObject<T = any>(): T {
       let container = parentId && federation._mfGetContainer(parentId);
       let rvmMapData: string[];
       if (!container) {
-        const binded = parentId && federation.getBindForId(parentId);
+        const binded = federation.getBindForId(parentId || parentURL);
         container = binded && federation._mfGetContainer(binded.container);
         if (!container) {
-          if (parentId) {
-            console.warn(
-              "Unable to find a binded object for a parent id",
-              parentId,
-              "url",
-              parentURL
-            );
-          }
+          console[parentId ? "warn" : "debug"](
+            "## Unable to find container for id " + id + " parentId " +
+            parentId + " parentURL " + parentURL
+          );
           return federation.sysResolve.call(this, id, parentURL, meta);
         }
         rvmMapData = binded.mapData;
@@ -352,10 +348,12 @@ function createObject<T = any>(): T {
           "resolve bind parent of",
           id,
           binded,
-          `\ncontainer`,
+          `\n  container`,
           container,
-          "\nget original import name from id to check for federation",
-          id
+          "\n  get original import name from id to check for federation",
+          id,
+          "\n  rvmMapData",
+          rvmMapData
         );
       }
 
@@ -366,7 +364,7 @@ function createObject<T = any>(): T {
         federation.findImportSpecFromId(id, container);
 
       if (!importName) {
-        console.debug("no import name found for id", id, "no federation");
+        console.debug("no import name found for id " + id + ", so treat it as no federation");
         return federation.sysResolve.call(
           federation._System,
           id,
@@ -376,6 +374,8 @@ function createObject<T = any>(): T {
       }
 
       // 2. get required version from container.$SC.rvm and binded.mapData
+
+      console.debug("  looking for required version - importName", importName, "\n  container", container, "\n  rvmMapData", rvmMapData);
       const requiredVersion = federation.matchRvm(
         importName,
         container,
@@ -387,18 +387,33 @@ function createObject<T = any>(): T {
       const scope = federation.$SS[container.scope];
       const shareMeta = scope && scope[importName];
 
-      const matchedVersion = requiredVersion
+      console.debug("  shareMeta", shareMeta, "\n  requiredVersion", requiredVersion, "\n  importVersion", importVersion);
+
+      // First try to find a loaded module that satisfies the version requirement
+      let matchedVersion = requiredVersion
         ? federation.semverMatch(
-            importName,
-            shareMeta,
-            requiredVersion,
-            true,
-            importVersion
-          )
+          importName,
+          shareMeta,
+          requiredVersion,
+          true,
+          importVersion
+        )
         : importVersion;
 
-      const shareInfo =
-        shareMeta && shareMeta[matchedVersion || firstObjectKey(shareMeta)];
+      // If no loaded module found but required version exists, try again without loadedOnly restriction
+      if (!matchedVersion && shareMeta) {
+        matchedVersion = federation.semverMatch(
+          importName,
+          shareMeta,
+          requiredVersion,
+          false,
+          importVersion
+        );
+        console.debug("  No loaded module found for", importName, "- falling back to unloaded module with version", matchedVersion);
+      }
+
+      const shareInfo = shareMeta && shareMeta[matchedVersion];
+      // || firstObjectKey(shareMeta)
 
       let shareId = id;
       let shareParentUrl = parentURL;
@@ -495,7 +510,15 @@ function createObject<T = any>(): T {
       rvmMapData: string[]
     ): string {
       const sc = container.$SC[importName];
-      const rvm = sc && sc.rvm;
+      if (!sc) {
+        console.debug("  matchRvm - no requiredVersion deu to no container scope found for importName", importName);
+        return "";
+      }
+      if (!sc.options.import) {
+        console.debug("  matchRvm - import is false for importName", importName, "\n  Using requiredVersion from options directly", sc.options.requiredVersion);
+        return sc.options.requiredVersion;
+      }
+      const rvm = sc.rvm;
       if (rvm && rvmMapData) {
         for (const _src of rvmMapData) {
           if (rvm[_src]) {
@@ -600,7 +623,17 @@ function createObject<T = any>(): T {
      */
     /*@__MANGLE_PROP__*/
     getRegDefForId(id: string): RegDef {
-      return this.$iU[startsWithDotSlash(id) ? id.slice(2) : id];
+      // if id starts with ./, then it means rollup has generated a unique bundle for the module
+      if (startsWithDotSlash(id)) {
+        return this.$iU[id.slice(2)];
+      }
+      if (id.startsWith("__mf_")) {
+        return this.$iU[id];
+      }
+      // else the id may be the original vanilla module name, no version or unique info that
+      // we can use to lookup its registered url or definition
+      return null;
+      // return this.$iU[startsWithDotSlash(id) ? id.slice(2) : id];
     }
 
     /**
@@ -813,7 +846,7 @@ function createObject<T = any>(): T {
         mapData,
         _register(_id, dep, declare, metas, _src) {
           const r = _F.register(id, dep, declare, metas, _src || src);
-          console.debug("resolving bind register to fill share scope", id);
+          console.debug("  register a unique bundle with id " + id + " for resolving binding to a federation in share scope");
           _F._mfLoaded("./" + id, options.c);
           return r;
         },
@@ -884,6 +917,7 @@ function createObject<T = any>(): T {
     ) {
       const sc = this.$SS[scope];
       const shareMeta = sc && sc[name];
+      console.debug("  _mfImport", name, scope, semver, fallbackToFirst);
       if (shareMeta) {
         let matchedVersion =
           semver && this.semverMatch(name, shareMeta, semver, false);
