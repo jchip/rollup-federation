@@ -6,8 +6,8 @@
   "homepage": "",
   "license": "UNLICENSED",
   "scripts": {
-    "bootstrap": "npm run nm && xrun certs build",
-    "nm": "[ -e node_modules ] || npx fyn",
+    "bootstrap": "fyn nm && fyn build",
+    "nm": "[ -e node_modules ] || fyn",
     "build": "fynpo",
     "start": "node public/dev-proxy.mjs",
     "certs": "node certs/tx.js"
