@@ -541,9 +541,7 @@ ${genExposesCode()}
 export function get(name, version, scope) {
   return ${CONTAINER_VAR}._mfGet(name, version, scope);
 }
-
-// Export the container instance directly
-export const c = ${CONTAINER_VAR};
+export const container = ${CONTAINER_VAR};
 `;
         } catch (_err: any) {
           return `/*
@@ -614,43 +612,125 @@ export const c = ${CONTAINER_VAR};
           };
         }
 
-        // Process shared modules
+        // Process shared modules - start with all entries from shared config
         for (const shareKey in shared) {
-          // Find actual module ID from collected shares
-          let moduleIds: string[] = [];
+          const sharedConfig = shared[shareKey];
+          federationInfo.shared[shareKey] = {
+            moduleIds: [],
+            chunks: [],
+            config: { ...sharedConfig }
+          };
+        }
 
-          if (collectedShares[shareKey]) {
-            const shareData = collectedShares[shareKey];
-            if (shareData.byImporters) {
-              for (const importerDir in shareData.byImporters) {
-                const importerData = shareData.byImporters[importerDir];
-                if (importerData.importee && importerData.importee.id) {
-                  moduleIds.push(importerData.importee.id);
+        // Now add details from collectedShares where available
+        for (const shareKey in collectedShares) {
+          if (!federationInfo.shared[shareKey]) {
+            federationInfo.shared[shareKey] = {
+              moduleIds: [],
+              chunks: [],
+              config: {}
+            };
+          }
+
+          const shareData = collectedShares[shareKey];
+          const entry = federationInfo.shared[shareKey];
+
+          // Include original options data
+          if (shareData.options) {
+            entry.config = { ...entry.config, ...shareData.options };
+          }
+
+          // Process all importers data
+          if (shareData.byImporters) {
+            for (const importerDir in shareData.byImporters) {
+              const importerData = shareData.byImporters[importerDir];
+              if (importerData.importee && importerData.importee.id) {
+                const importeeId = importerData.importee.id;
+                const relativePath = relative(process.cwd(), importeeId);
+
+                // Add module ID if not already included
+                if (!entry.moduleIds.includes(relativePath)) {
+                  entry.moduleIds.push(relativePath);
+                }
+
+                // Add importer details
+                if (!entry.importers) {
+                  entry.importers = [];
+                }
+
+                entry.importers.push({
+                  dir: importerDir,
+                  path: relativePath
+                });
+
+                // Add chunks that contain this module
+                const moduleChunks = getModuleBundles(importeeId);
+                moduleChunks.forEach(chunk => {
+                  if (!entry.chunks.includes(chunk)) {
+                    entry.chunks.push(chunk);
+                  }
+                });
+
+                // Try to get version info
+                try {
+                  const pkgInfo = readPackageUpSync({ cwd: importeeId });
+                  if (pkgInfo?.packageJson?.version) {
+                    if (!entry.versions) {
+                      entry.versions = [];
+                    }
+
+                    // Check if this version entry already exists to avoid duplicates
+                    const versionEntry = {
+                      version: pkgInfo.packageJson.version,
+                      path: relativePath
+                    };
+
+                    // Only add if we don't already have an entry with the same path and version
+                    const isDuplicate = entry.versions.some((v: { version: string, path: string }) =>
+                      v.version === versionEntry.version &&
+                      v.path === versionEntry.path
+                    );
+
+                    if (!isDuplicate) {
+                      entry.versions.push(versionEntry);
+                    }
+                  }
+                } catch (e) {
+                  debug(`Error getting version for ${shareKey}`, e);
                 }
               }
             }
           }
+        }
 
-          // Get unique moduleIds
-          moduleIds = [...new Set(moduleIds)];
+        // Look for any unused modules that have entries in the generated code
+        // This is for cases where a shared module is configured but not actually imported
+        // directly, but is included in the container entry code with dynamic imports
+        for (const name in bundle) {
+          const chunk = bundle[name] as any;
+          if (chunk.facadeModuleId === entryId) {
+            // This is the container entry chunk, let's parse its code
+            if (chunk.code) {
+              try {
+                // Look for _container._S(...) calls in the code
+                const shareRegex = /_container\._S\(['"](.*?)['"].*?\[_f\(['"](.*?)['"]\).*?\]\]/gms;
+                let match;
+                while ((match = shareRegex.exec(chunk.code)) !== null) {
+                  const moduleKey = match[1];
+                  const chunkPath = match[2];
 
-          // Collect bundle information for this shared module
-          const chunks: string[] = [];
-          moduleIds.forEach(id => {
-            const moduleChunks = getModuleBundles(id);
-            moduleChunks.forEach(chunk => {
-              if (!chunks.includes(chunk)) {
-                chunks.push(chunk);
+                  if (federationInfo.shared[moduleKey]) {
+                    const entry = federationInfo.shared[moduleKey];
+                    if (entry.chunks.length === 0 && !entry.chunks.includes(chunkPath)) {
+                      entry.chunks.push(chunkPath);
+                    }
+                  }
+                }
+              } catch (e) {
+                debug("Error parsing container code", e);
               }
-            });
-          });
-
-          // Include original config and bundle information
-          federationInfo.shared[shareKey] = {
-            moduleIds: moduleIds.map(id => relative(process.cwd(), id)),
-            chunks,
-            config: shared[shareKey]
-          };
+            }
+          }
         }
 
         // Emit the federation.json file
