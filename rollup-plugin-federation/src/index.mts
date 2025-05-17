@@ -48,6 +48,8 @@ export type FederationPluginOptions = {
   shareScope?: string;
   /** Whether to enable debug logging and output */
   debugging?: boolean;
+  /** Whether to emit federation info as JSON file (defaults to true) */
+  emitFederationJson?: boolean;
 };
 
 const CONTAINER_SIG = `_mf_container_`;
@@ -143,6 +145,7 @@ export default function federation(options: FederationPluginOptions): Plugin {
   const nmPathSig = "/node_modules/";
   const fynPathSig = "/node_modules/.f/_/";
   const collectedShares: Record<string, any> = {};
+  const emitFederationJson = options.emitFederationJson !== false;
 
   const debug = options.debugging
     ? (...args: any[]) => console.log(...args)
@@ -538,6 +541,9 @@ ${genExposesCode()}
 export function get(name, version, scope) {
   return ${CONTAINER_VAR}._mfGet(name, version, scope);
 }
+
+// Export the container instance directly
+export const c = ${CONTAINER_VAR};
 `;
         } catch (_err: any) {
           return `/*
@@ -557,6 +563,102 @@ export function get(name, version, scope) {
             m.fileName = filename;
           }
         }
+      }
+
+      // Generate federation.json with information about federated modules
+      if (emitFederationJson) {
+        // Helper function to get bundle information for each module
+        const getModuleBundles = (moduleId: string): string[] => {
+          const moduleInfo = this.getModuleInfo(moduleId);
+          if (!moduleInfo) return [];
+
+          // Get chunks that directly contain this module
+          const chunks: string[] = [...(moduleInfo.dynamicallyImportedIds || [])];
+
+          // Also check if this module is part of a larger chunk
+          for (const name in bundle) {
+            const chunk = bundle[name] as any;
+            if (chunk.moduleIds && chunk.moduleIds.includes(moduleId)) {
+              if (!chunks.includes(chunk.fileName)) {
+                chunks.push(chunk.fileName);
+              }
+            }
+          }
+
+          return chunks;
+        };
+
+        const federationInfo: {
+          name: string;
+          filename: string;
+          shareScope: string;
+          exposes: Record<string, any>;
+          shared: Record<string, any>;
+          timestamp: string;
+        } = {
+          name: options.name,
+          filename: options.filename,
+          shareScope,
+          exposes: {},
+          shared: {},
+          timestamp: new Date().toISOString(),
+        };
+
+        // Process exposed modules
+        const exposes = options.exposes || {};
+        for (const exposeKey in exposes) {
+          const exposePath = exposes[exposeKey];
+          federationInfo.exposes[exposeKey] = {
+            path: exposePath,
+            chunks: getModuleBundles(resolve(process.cwd(), exposePath))
+          };
+        }
+
+        // Process shared modules
+        for (const shareKey in shared) {
+          // Find actual module ID from collected shares
+          let moduleIds: string[] = [];
+
+          if (collectedShares[shareKey]) {
+            const shareData = collectedShares[shareKey];
+            if (shareData.byImporters) {
+              for (const importerDir in shareData.byImporters) {
+                const importerData = shareData.byImporters[importerDir];
+                if (importerData.importee && importerData.importee.id) {
+                  moduleIds.push(importerData.importee.id);
+                }
+              }
+            }
+          }
+
+          // Get unique moduleIds
+          moduleIds = [...new Set(moduleIds)];
+
+          // Collect bundle information for this shared module
+          const chunks: string[] = [];
+          moduleIds.forEach(id => {
+            const moduleChunks = getModuleBundles(id);
+            moduleChunks.forEach(chunk => {
+              if (!chunks.includes(chunk)) {
+                chunks.push(chunk);
+              }
+            });
+          });
+
+          // Include original config and bundle information
+          federationInfo.shared[shareKey] = {
+            moduleIds: moduleIds.map(id => relative(process.cwd(), id)),
+            chunks,
+            config: shared[shareKey]
+          };
+        }
+
+        // Emit the federation.json file
+        this.emitFile({
+          type: "asset",
+          fileName: "federation.json",
+          source: JSON.stringify(federationInfo, null, 2),
+        });
       }
     },
 
@@ -670,17 +772,40 @@ var System = Federation._mfBind(
 `;
     },
 
+    /**
+     * Customizes the footer of the output bundle
+     *
+     * This hook allows the federation plugin to:
+     * 1. Add custom code to the footer of the output bundle
+     * 2. Modify the final output before it is written to the file system
+     * 3. Support the container's module resolution and sharing mechanism
+     *
+     * @returns {string} The custom footer code
+     */
     footer() {
       return `})(globalThis.Federation);`;
     },
 
+    /**
+     * Customizes how dynamic imports are resolved in the output bundle
+     *
+     * This hook allows the federation plugin to:
+     * 1. Handle special dynamic imports for the federation container entry point
+     * 2. Replace dynamic imports with a special function that captures the import ID
+     * 3. Support the container's module resolution and sharing mechanism
+     *
+     * @param {string} specifier - The specifier of the dynamic import
+     * @param {string} importer - The importer of the dynamic import
+     * @param {Object} options - Additional options for the dynamic import
+     * @returns {Object|null} Resolved dynamic import or null to use default resolution
+     */
     resolveDynamicImport(
       // @ts-ignore
       specifier: any,
       // @ts-ignore
-      importer,
+      importer: any,
       // @ts-ignore
-      options
+      options: any
     ) {
       // debug("resolveDynamicImport", specifier, importer, options);
 
@@ -691,14 +816,29 @@ var System = Federation._mfBind(
       return null;
     },
 
+    /**
+     * Customizes how dynamic imports are rendered in the output bundle
+     *
+     * This hook allows the federation plugin to:
+     * 1. Insert dynamic imports for each shared/federated module into the container entry file
+     * 2. Enable Rollup to track which bundle files contain which modules
+     * 3. Rewrite these dynamic imports to use a special function that maintains import ID information
+     *
+     * In the container entry point, we replace dynamic import calls with a special helper function `_f()`
+     * that captures the import ID. This is crucial for the Module Federation container's proper functioning,
+     * as it allows the federation runtime to locate and load the correct chunks at runtime.
+     *
+     * @param {Object} params - Parameters for rendering the dynamic import
+     * @param {string} params.customResolution - Custom resolution for the dynamic import if provided
+     * @param {string} params.format - Output format (e.g., 'es', 'cjs')
+     * @param {string} params.moduleId - ID of the module containing the dynamic import
+     * @param {string} params.targetModuleId - ID of the module being dynamically imported
+     * @returns {Object|null} Import rendering instructions or null to use default rendering
+     */
     renderDynamicImport({
-      // @ts-ignore
       customResolution,
-      // @ts-ignore
       format,
-      // @ts-ignore
       moduleId,
-      // @ts-ignore
       targetModuleId,
     }) {
       debug(
@@ -708,6 +848,11 @@ var System = Federation._mfBind(
         moduleId,
         targetModuleId
       );
+      /** We are inserting dynamic import for each shared/federated module into the generated container entry
+       * file in order to get rollup to automatically give us the information about the bundle file that
+       * contains the module, but then we need to rewrite the dynamic import to use the special function
+       * which will provide the information about the bundle file that contains the module
+       */
       if (moduleId === entryId) {
         return {
           left: "_f(",
