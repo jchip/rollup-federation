@@ -943,6 +943,29 @@ function createObject<T = any>(): T {
     }
 
     /**
+     * Import an expose module from a module federation container
+     *
+     * @param id - the specifier to import - it must start with `"-MF_EXPOSE "`
+     */
+    async _importExpose(id: string) {
+      const [type, exposeModule] = id.split(" ");
+      if (type === "-MF_EXPOSE") {
+        let [pkgScope, fynappName, module] = exposeModule.split("/");
+        if (!module) {
+          module = fynappName;
+          fynappName = pkgScope;
+          pkgScope = "";
+        }
+        const container = this._mfGetContainer(fynappName);
+        const factory = await container._mfGet("./" + module);
+        const mod = factory();
+        return mod;
+      }
+
+      return null;
+    }
+
+    /**
      * ***Add Shared***
      *
      * @param scope

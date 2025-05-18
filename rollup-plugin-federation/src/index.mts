@@ -887,12 +887,43 @@ var System = Federation._mfBind(
       // @ts-ignore
       options: any
     ) {
-      // debug("resolveDynamicImport", specifier, importer, options);
+      debug("resolveDynamicImport", specifier, importer, options);
 
       // if (specifier && specifier.includes("apply-color")) {
       //   return specifier + `?mf=1&s=default&v=^1.7.1`;
       // }
 
+      const attributes = options?.attributes || {};
+
+
+      if (attributes.type === "mf-shared" || attributes.type === "federation-shared") {
+        return {
+          id: `-MF_SHARED ${attributes.fynapp} ${attributes.requiredVersion} ${specifier}`,
+          external: true,
+          moduleSideEffects: "no-treeshake",
+          dynamicImport: true,
+        };
+      }
+
+      if (attributes.type === "mf-expose" || attributes.type === "federation-expose") {
+        return {
+          id: `-MF_EXPOSE ${specifier}`,
+          external: true,
+          moduleSideEffects: "no-treeshake",
+          dynamicImport: true,
+        };
+      }
+
+      // TODO: module federation plugin should not know about fynapp
+      // - add plugin config to allow callbacks to handle dynamic imports
+      if (attributes.type === "fynapp-middleware") {
+        return {
+          id: `-FYNAPP_MW ${attributes.fynapp} ${specifier}`,
+          external: true,
+          moduleSideEffects: "no-treeshake",
+          dynamicImport: true,
+        };
+      }
       return null;
     },
 
@@ -928,7 +959,29 @@ var System = Federation._mfBind(
         moduleId,
         targetModuleId
       );
-      /** We are inserting dynamic import for each shared/federated module into the generated container entry
+      if (targetModuleId?.startsWith("-MF_SHARED ")) {
+        return {
+          left: "Federation._importShared(",
+          right: `)`,
+        };
+      }
+
+      if (targetModuleId?.startsWith("-FYNAPP_MW ")) {
+        return {
+          left: "__useFynAppMiddleware(",
+          right: ")",
+        };
+      }
+
+      if (targetModuleId?.startsWith("-MF_EXPOSE ")) {
+        return {
+          left: `Federation._importExpose(`,
+          right: ")",
+        };
+      }
+
+      /**
+       * We are inserting dynamic import for each shared/federated module into the generated container entry
        * file in order to get rollup to automatically give us the information about the bundle file that
        * contains the module, but then we need to rewrite the dynamic import to use the special function
        * which will provide the information about the bundle file that contains the module
@@ -939,6 +992,7 @@ var System = Federation._mfBind(
           right: ")",
         };
       }
+
       return null;
     },
   } as Plugin;
