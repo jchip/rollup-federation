@@ -1,4 +1,4 @@
-import { satisfy, parseRange } from "./semver";
+import { satisfy, parseRange } from "./semver.js";
 
 // globalThis polyfill
 (function (Object) {
@@ -54,6 +54,8 @@ type BindOptions = {
   s: string;
   /** isEntry */
   e: boolean;
+  /** container version */
+  v?: string;
 };
 
 type ShareSource = {
@@ -229,16 +231,16 @@ function createObject<T = any>(): T {
    */
   class FederationJS {
     private _System: any;
-    private $C: Record<string, Container>;
+    private $C: Record<string, Record<string, Container>>;
     private $B: Record<string, MFBinding>;
     private $SS: ShareStore;
     private sysResolve: any;
     private sysRegister: any;
     private sysInstantiate: any;
     /** ID to URL mapping */
-    private $iU: Record<string, RegDef>;
+    private $iU: Record<string, Record<string, RegDef>>;
     /** URL to ID mapping */
-    private $uI: Record<string, string[]>;
+    private $uI: Record<string, { id: string, version: string }[]>;
     /** pending module load waiting for container */
     private $pC: Record<string, any>;
     randomSource?: boolean;
@@ -259,6 +261,7 @@ function createObject<T = any>(): T {
       this.$iU = createObject();
       this.$uI = createObject();
       this.$pC = createObject();
+      this.$C = createObject();
 
       const federation = this;
 
@@ -316,7 +319,6 @@ function createObject<T = any>(): T {
       //   return _import.call(this, id, parentUrl, meta);
       // };
 
-      this.$C = createObject();
       this.$B = createObject();
       this.$SS = createObject();
     }
@@ -329,8 +331,9 @@ function createObject<T = any>(): T {
      * @returns
      */
     resolve(id: string, parentURL: string, meta?: unknown): string {
+      console.debug("## resolve - id", id, "parentURL", parentURL, "meta", meta);
       const federation = this;
-      const parentId = federation.getIdForUrl(parentURL);
+      const parentId = federation.getIdForUrl(parentURL)?.id;
       let container = parentId && federation._mfGetContainer(parentId);
       let rvmMapData: string[];
       if (!container) {
@@ -338,14 +341,14 @@ function createObject<T = any>(): T {
         container = binded && federation._mfGetContainer(binded.container);
         if (!container) {
           console[parentId ? "warn" : "debug"](
-            "## Unable to find container for id " + id + " parentId " +
+            " >> Unable to find container for id " + id + " parentId " +
             parentId + " parentURL " + parentURL
           );
           return federation.sysResolve.call(this, id, parentURL, meta);
         }
         rvmMapData = binded.mapData;
         console.debug(
-          "resolve bind parent of",
+          " >> resolve bind parent of",
           id,
           binded,
           `\n  container`,
@@ -364,7 +367,7 @@ function createObject<T = any>(): T {
         federation.findImportSpecFromId(id, container);
 
       if (!importName) {
-        console.debug("no import name found for id " + id + ", so treat it as no federation");
+        console.debug(" >> no import name found for id " + id + ", so treat it as no federation");
         return federation.sysResolve.call(
           federation._System,
           id,
@@ -611,8 +614,8 @@ function createObject<T = any>(): T {
      * @returns
      */
     /*@__MANGLE_PROP__*/
-    getUrlForId(id: string): string {
-      const rd = this.getRegDefForId(id);
+    getUrlForId(id: string, reqSemver?: string): string {
+      const rd = this.getRegDefForId(id, reqSemver);
       return rd && rd.url;
     }
 
@@ -622,13 +625,19 @@ function createObject<T = any>(): T {
      * @returns
      */
     /*@__MANGLE_PROP__*/
-    getRegDefForId(id: string): RegDef {
+    getRegDefForId(id: string, reqSemver?: string): RegDef {
       // if id starts with ./, then it means rollup has generated a unique bundle for the module
       if (startsWithDotSlash(id)) {
-        return this.$iU[id.slice(2)];
+        return this.$iU[id.slice(2)]?._;
       }
       if (id.startsWith("__mf_")) {
-        return this.$iU[id];
+        if (reqSemver) {
+          const svRange = parseRange(reqSemver);
+          const versions = Object.keys(this.$iU[id]);
+          const version = versions.find(v => v !== "_" && satisfy(svRange, v));
+          return this.$iU[id][version];
+        }
+        return this.$iU[id]._;
       }
       // else the id may be the original vanilla module name, no version or unique info that
       // we can use to lookup its registered url or definition
@@ -642,7 +651,7 @@ function createObject<T = any>(): T {
      * @returns
      */
     /*@__MANGLE_PROP__*/
-    private getIdForUrl(url: string): string {
+    private getIdForUrl(url: string): { id: string, version: string } {
       return this.$uI[url] && this.$uI[url][0];
     }
 
@@ -652,18 +661,28 @@ function createObject<T = any>(): T {
      * @param url
      */
     /*@__MANGLE_PROP__*/
-    private addIdUrlMap(id: string, url: string, def?: unknown): boolean {
+    private addIdUrlMap(id: string, url: string, def?: unknown, container?: Container): boolean {
       if (url !== id) {
         let id2 = id;
         if (startsWithDotSlash(id)) {
           id2 = id.slice(2);
         }
 
-        if (!this.$iU[id2]) {
-          this.$iU[id2] = { url, def };
+        let $iUMap = this.$iU[id2];
+        if (!$iUMap) {
+          $iUMap = this.$iU[id2] = createObject();
         }
 
-        addElementToArrayInObject(this.$uI, url, id);
+        const regDef = { url, def };
+        if (!$iUMap._) {
+          $iUMap._ = regDef;
+        }
+
+        if (container?.version) {
+          $iUMap[container.version] = regDef;
+        }
+
+        addElementToArrayInObject(this.$uI, url, { id, version: container?.version });
         return true;
       }
       return false;
@@ -747,7 +766,8 @@ function createObject<T = any>(): T {
       deps: any,
       declare: any,
       meta: any,
-      src?: string
+      src?: string,
+      container?: Container
     ): unknown {
       if (typeof id !== "string") {
         console.debug("federation - no name for register - using original");
@@ -758,7 +778,7 @@ function createObject<T = any>(): T {
       const url = currentScr && currentScr.src;
       console.debug(`federation register - id:`, id, "url:", url);
       const def = [deps, declare, meta];
-      this.addIdUrlMap(id, url, def);
+      this.addIdUrlMap(id, url, def, container);
 
       return this.sysRegister.apply(this._System, def);
     }
@@ -795,8 +815,20 @@ function createObject<T = any>(): T {
      * @param name
      * @returns
      */
-    _mfGetContainer(name: string) {
-      return this.$C[containerNameToId(name)];
+    _mfGetContainer(name: string, reqSemver?: string) {
+      const id = containerNameToId(name);
+      const containerMap = this.$C[id];
+      if (!containerMap) {
+        return undefined;
+      }
+      if (reqSemver) {
+        const versions = Object.keys(containerMap);
+        const svRange = parseRange(reqSemver);
+        const version = versions.find(v => v !== "_" && satisfy(svRange, v));
+        console.debug("  _mfGetContainer - version", version, "for", name, "and", reqSemver);
+        return containerMap[version];
+      }
+      return containerMap._;
     }
 
     /**
@@ -851,7 +883,11 @@ function createObject<T = any>(): T {
           return r;
         },
         register(dep, declare, metas, _src?: string) {
-          if (!_F._mfGetContainer(options.c)) {
+          const container = _F._mfGetContainer(options.c, options.v);
+
+          if (!container) {
+            // registering a module for a container that is not yet registered
+            // so we need to defer the registration until the container is registered
             if (
               addElementToArrayInObject(_F.$pC, options.c, {
                 id,
@@ -867,7 +903,7 @@ function createObject<T = any>(): T {
             }
             return;
           }
-          //
+
           return this._register(id, dep, declare, metas, _src);
         },
       };
@@ -886,18 +922,27 @@ function createObject<T = any>(): T {
      * @param scopeName
      * @returns
      */
-    _mfContainer(name: string, scopeName: string) {
+    _mfContainer(name: string, scopeName: string, version: string = "0.0.0") {
       const id = containerNameToId(name);
-      if (this.$C[id]) {
-        return this.$C[id];
+      let containerMap = this.$C[id];
+
+      if (!containerMap) {
+        containerMap = this.$C[id] = createObject();
       }
 
-      const container = (this.$C[id] = new Container(
-        id,
-        name,
-        scopeName,
-        this
-      ));
+      let container = containerMap[version];
+      if (container) {
+        // If container with this version already exists, log warning and return existing
+        console.warn(`Container ${name} with version ${version} already exists`);
+        return container;
+      }
+
+      container = containerMap[version] = new Container(id, name, scopeName, version, this);
+
+      // If this is the first container for this ID, store it as default and with version
+      if (!containerMap._) {
+        containerMap._ = container;
+      }
 
       return container;
     }
@@ -947,7 +992,7 @@ function createObject<T = any>(): T {
      *
      * @param id - the specifier to import - it must start with `"-MF_EXPOSE "`
      */
-    async _importExpose(id: string) {
+    async _importExpose(id: string, semver?: string) {
       const [type, exposeModule] = id.split(" ");
       if (type === "-MF_EXPOSE") {
         let [pkgScope, fynappName, module] = exposeModule.split("/");
@@ -956,7 +1001,8 @@ function createObject<T = any>(): T {
           fynappName = pkgScope;
           pkgScope = "";
         }
-        const container = this._mfGetContainer(fynappName);
+        const container = this._mfGetContainer(fynappName, semver);
+        console.debug("  _importExpose - container", container.name, container.version);
         const factory = await container._mfGet("./" + module);
         const mod = factory();
         return mod;
@@ -1025,6 +1071,8 @@ function createObject<T = any>(): T {
     scope: string;
     /** share config */
     $SC: ShareConfig;
+    /** version of this container */
+    version: string;
 
     /** the share scope object from the federation this container is sharing modules to/from */
     $SS: ShareScope;
@@ -1038,16 +1086,26 @@ function createObject<T = any>(): T {
      *
      * @param name
      * @param scopeName
+     * @param version - version of the container
      */
-    constructor(id: string, name: string, scopeName: string, federation?: any) {
+    constructor(id: string, name: string, scopeName: string, version: string = "0.0.0", federation?: any) {
       this.scope = scopeName;
       this.id = id;
       this.name = name;
+      this.version = version;
       /*@__MANGLE_PROP__*/
       this.Fed = federation || _global.Federation;
 
       this.$SC = createObject();
       this.$E = createObject();
+    }
+
+    /**
+     * Gets the version of this container
+     * @returns The container version
+     */
+    getVersion(): string {
+      return this.version;
     }
 
     /**
@@ -1059,7 +1117,7 @@ function createObject<T = any>(): T {
      */
     register(dep: string[], declare: any, metas: any): unknown {
       this.Fed._checkPendingRegs(this.name);
-      return this.Fed.register(this.id, dep, declare, metas);
+      return this.Fed.register(this.id, dep, declare, metas, undefined, this);
     }
 
     /**
@@ -1108,7 +1166,7 @@ function createObject<T = any>(): T {
      * @returns
      */
     _mfGet(name: string): Promise<() => unknown> {
-      const parentUrl = this.Fed.getUrlForId(this.id);
+      const parentUrl = this.Fed.getUrlForId(this.id, this.version);
       const id = this.$E[name] || name;
       return this.Fed.import(id, parentUrl).then((_m: unknown) => {
         return () => _m;

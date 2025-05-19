@@ -9,7 +9,7 @@ import { pick, uniq } from "lodash-es";
 import { dirname, isAbsolute, resolve, relative } from "node:path";
 // import { pkgUp } from "pkg-up";
 import { readPackageUpSync } from "read-pkg-up";
-
+import fs from "node:fs";
 /**
  * Simple return type for the version info
  */
@@ -50,6 +50,8 @@ export type FederationPluginOptions = {
   debugging?: boolean;
   /** Whether to emit federation info as JSON file (defaults to true) */
   emitFederationJson?: boolean;
+  /** Version of this federation container */
+  version?: string;
 };
 
 const CONTAINER_SIG = `_mf_container_`;
@@ -142,6 +144,15 @@ export default function federation(options: FederationPluginOptions): Plugin {
   const filename = options.filename;
   const shared = options.shared || {};
   const shareScope = options.shareScope || "default";
+  const containerVersion = options.version || (() => {
+    try {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+      return pkg?.version;
+    } catch (e) {
+      console.error("Error reading package.json", e);
+    }
+    return "0.0.0";
+  })();
   const nmPathSig = "/node_modules/";
   const fynPathSig = "/node_modules/.f/_/";
   const collectedShares: Record<string, any> = {};
@@ -593,6 +604,7 @@ export const container = ${CONTAINER_VAR};
           exposes: Record<string, any>;
           shared: Record<string, any>;
           timestamp: string;
+          version: string;
         } = {
           name: options.name,
           filename: options.filename,
@@ -600,6 +612,7 @@ export const container = ${CONTAINER_VAR};
           exposes: {},
           shared: {},
           timestamp: new Date().toISOString(),
+          version: containerVersion
         };
 
         // Process exposed modules
@@ -804,7 +817,8 @@ isEntry: ${chunk.isEntry}
 //
 var ${CONTAINER_VAR} = Federation._mfContainer(
   '${options.name}', // container name
-  '${shareScope}' // share scope name
+  '${shareScope}', // share scope name
+  '${containerVersion}' // container version
 );
 //
 var System = ${CONTAINER_VAR};
@@ -841,7 +855,8 @@ var System = Federation._mfBind(
     f: '${chunk.fileName}', // chunk fileName
     c: '${options.name}', // federation container name
     s: '${shareScope}', // default scope name
-    e: ${chunk.isEntry} // chunk isEntry
+    e: ${chunk.isEntry}, // chunk isEntry
+    v: '${containerVersion}' // container version
   },
   // dirs from ids of modules included in the chunk
   // use these to match rvm in container to find required version
