@@ -60,7 +60,10 @@ type BindOptions = {
 
 type ShareSource = {
   id: string;
+  /** container name */
   container: string;
+  /** container version */
+  version: string;
   loaded?: boolean;
 };
 
@@ -434,7 +437,8 @@ function createObject<T = any>(): T {
         // The container registered the share info, so the id is
         // relative to the container's URL.
         shareParentUrl = federation.getUrlForId(
-          containerNameToId(source.container)
+          containerNameToId(source.container),
+          source.version
         );
         shareId = source.id;
       }
@@ -717,8 +721,8 @@ function createObject<T = any>(): T {
      * @param id
      * @param containerName
      */
-    _mfLoaded(id: string, containerName: string) {
-      const container = this._mfGetContainer(containerName);
+    _mfLoaded(id: string, containerName: string, containerVersion?: string) {
+      const container = this._mfGetContainer(containerName, containerVersion);
       const { n, v } = this.findImportSpecFromId(id, container);
       const sc = n && v && this.$SS[container.scope];
       const shareInfo = sc && sc[n][v];
@@ -728,7 +732,7 @@ function createObject<T = any>(): T {
         if (!shareInfo.url) {
           shareInfo.srcIdx = ix;
           shareInfo.id = id;
-          const rd = this.getRegDefForId(id);
+          const rd = this.getRegDefForId(id, container?.version);
           if (!rd) {
             shareInfo.url = this.sysResolve.call(
               this._System,
@@ -736,7 +740,7 @@ function createObject<T = any>(): T {
               // we expect module bundle file to reside at the same location as the
               // container entry file, so we get container url from its id, and use it
               // as base and add module file id to construct the module's url
-              this.getUrlForId(container.id)
+              this.getUrlForId(container.id, container?.version)
             );
           } else {
             shareInfo.url = id;
@@ -879,7 +883,7 @@ function createObject<T = any>(): T {
         _register(_id, dep, declare, metas, _src) {
           const r = _F.register(id, dep, declare, metas, _src || src);
           console.debug("  register a unique bundle with id " + id + " for resolving binding to a federation in share scope");
-          _F._mfLoaded("./" + id, options.c);
+          _F._mfLoaded("./" + id, options.c, options.v);
           return r;
         },
         register(dep, declare, metas, _src?: string) {
@@ -1025,12 +1029,13 @@ function createObject<T = any>(): T {
       key: string,
       version: string,
       id: string,
-      container: string
+      container: string,
+      containerVersion?: string
     ): void {
       const _ss = this.$SS[scope];
       const _sm = _ss[key] || (_ss[key] = createObject());
       const _si = _sm[version] || (_sm[version] = createObject());
-      if (addElementToArrayInObject(_si, "sources", { id, container })) {
+      if (addElementToArrayInObject(_si, "sources", { id, container, version: containerVersion })) {
         _si.sources.length > 1 &&
           console.debug(
             `adding share source from container`,
@@ -1141,7 +1146,7 @@ function createObject<T = any>(): T {
           // import === false means consume only shared, do not add it
           // to the global share scope since this container cannot provide it
           if (options.import !== false) {
-            this.Fed._S(scope, key, version, _bundle.id, this.name);
+            this.Fed._S(scope, key, version, _bundle.id, this.name, this.version);
           }
         }
         const maps = _s.slice(1);
