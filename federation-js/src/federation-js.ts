@@ -31,6 +31,7 @@ type MFBinding = {
   src?: string;
   fileName: string;
   container: string;
+  containerVersion?: string;
   scopeName: string;
   mapData: string[];
   register: (dep: any, declare: any, metas: any) => unknown;
@@ -336,12 +337,12 @@ function createObject<T = any>(): T {
     resolve(id: string, parentURL: string, meta?: unknown): string {
       console.debug("## resolve - id", id, "parentURL", parentURL, "meta", meta);
       const federation = this;
-      const parentId = federation.getIdForUrl(parentURL)?.id;
-      let container = parentId && federation._mfGetContainer(parentId);
+      const { id: parentId, version: parentVersion } = federation.getIdForUrl(parentURL) || {};
+      let container = parentId && federation._mfGetContainer(parentId, parentVersion);
       let rvmMapData: string[];
       if (!container) {
         const binded = federation.getBindForId(parentId || parentURL);
-        container = binded && federation._mfGetContainer(binded.container);
+        container = binded && federation._mfGetContainer(binded.container, binded.containerVersion);
         if (!container) {
           console[parentId ? "warn" : "debug"](
             " >> Unable to find container for id " + id + " parentId " +
@@ -878,6 +879,7 @@ function createObject<T = any>(): T {
         src,
         fileName: options.f,
         container: options.c,
+        containerVersion: options.v,
         scopeName: options.s,
         mapData,
         _register(_id, dep, declare, metas, _src) {
@@ -997,7 +999,10 @@ function createObject<T = any>(): T {
      * @param id - the specifier to import - it must start with `"-MF_EXPOSE "`
      */
     async _importExpose(id: string, semver?: string) {
-      const [type, exposeModule] = id.split(" ");
+      const [type, exposeModule, requiredVersion] = id.split(" ");
+      if (requiredVersion && !semver) {
+        semver = requiredVersion;
+      }
       if (type === "-MF_EXPOSE") {
         let [pkgScope, fynappName, module] = exposeModule.split("/");
         if (!module) {

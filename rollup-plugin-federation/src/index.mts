@@ -922,7 +922,7 @@ var System = Federation._mfBind(
 
       if (attributes.type === "mf-expose" || attributes.type === "federation-expose") {
         return {
-          id: `-MF_EXPOSE ${specifier}`,
+          id: `-MF_EXPOSE ${specifier} ${attributes.requireVersion}`,
           external: true,
           moduleSideEffects: "no-treeshake",
           dynamicImport: true,
