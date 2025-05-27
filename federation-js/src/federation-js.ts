@@ -328,6 +328,35 @@ function createObject<T = any>(): T {
     }
 
     /**
+     * Try to find a container that has the exposed id
+     *
+     * In the case where some code import an exposed module with the id like "./main", and if
+     * that module has other dependencies, then SystemJS will load those using the exposed id
+     * as parentURL, in the "./main" form, and this will confused the entire system because
+     * SystemJS can't find resolve to a full URL.  So we try to assume that the id is an exposed
+     * module, and search all containers that has that exposed id.
+     *
+     * @param id
+     * @returns
+     */
+    /*@__MANGLE_PROP__*/
+    private searchContainerForExposedId(id: string): Container | undefined {
+      for (const containerId in this.$C) {
+        const containerMap = this.$C[containerId];
+        for (const ver in containerMap) {
+          if (ver !== "_") {
+            const container = containerMap[ver];
+            for (const exp in container.$E) {
+              if (container.$E[exp] === id) {
+                return container;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    /**
      *
      * @param id
      * @param parentURL
@@ -339,6 +368,22 @@ function createObject<T = any>(): T {
       const federation = this;
       const { id: parentId, version: parentVersion } = federation.getIdForUrl(parentURL) || {};
       let container = parentId && federation._mfGetContainer(parentId, parentVersion);
+      // SystemJS is trying load dependencies of an exposed module with the id like "./main"
+      // We have to find the container that might exposed that id and use it to form the full
+      // parentURL.
+      if (!container && startsWithDotSlash(parentURL)) {
+        container = this.searchContainerForExposedId(parentURL);
+        if (container) {
+          console.debug(" >> found container for exposed id", parentURL, container);
+          parentURL = federation.sysResolve.call(
+            federation._System,
+            parentURL,
+            container.url,
+            meta
+          );
+        }
+      }
+
       let rvmMapData: string[];
       if (!container) {
         const binded = federation.getBindForId(parentId || parentURL);
@@ -685,6 +730,7 @@ function createObject<T = any>(): T {
 
         if (container?.version) {
           $iUMap[container.version] = regDef;
+          container.url = url;
         }
 
         addElementToArrayInObject(this.$uI, url, { id, version: container?.version });
@@ -1077,6 +1123,10 @@ function createObject<T = any>(): T {
      * ID FederationJS given to the container, derived from name
      */
     id: string;
+    /**
+     * URL of the container entry
+     */
+    url?: string;
     /** default scope name for this container */
     scope: string;
     /** share config */
@@ -1176,8 +1226,8 @@ function createObject<T = any>(): T {
      * @returns
      */
     _mfGet(name: string): Promise<() => unknown> {
-      const parentUrl = this.Fed.getUrlForId(this.id, this.version);
       const id = this.$E[name] || name;
+      const parentUrl = this.Fed.getUrlForId(this.id, this.version);
       return this.Fed.import(id, parentUrl).then((_m: unknown) => {
         return () => _m;
       });
