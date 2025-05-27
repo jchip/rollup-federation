@@ -1,6 +1,6 @@
 # Rollup Federation
 
-Experimental implmentation of module federation using SystemJS as runtime for rollup.
+JavaScript module federation using SystemJS as runtime for rollup
 
 ## Test Drive
 
