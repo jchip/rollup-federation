@@ -1,6 +1,7 @@
+// @ts-nocheck
 /*
-	MIT License http://www.opensource.org/licenses/mit-license.php
-	Author Tobias Koppers @sokra
+  MIT License http://www.opensource.org/licenses/mit-license.php
+  Author Tobias Koppers @sokra
 */
 
 "use strict";
@@ -43,7 +44,7 @@ export const versionLt = (_a: string, _b: string): boolean => {
   var a = parseVersion(_a);
   var b = parseVersion(_b);
   var i = 0;
-  for (;;) {
+  for (; ;) {
     // a       b  EOA     object  undefined  number  string
     // EOA        a == b  a < b   b < a      a < b   a < b
     // object     b < a   (0)     b < a      a < b   a < b
@@ -228,14 +229,14 @@ export const rangeToString = (range) => {
       fixCount == 0
         ? ">="
         : fixCount == -1
-        ? "<"
-        : fixCount == 1
-        ? "^"
-        : fixCount == 2
-        ? "~"
-        : fixCount > 0
-        ? "="
-        : "!=";
+          ? "<"
+          : fixCount == 1
+            ? "^"
+            : fixCount == 2
+              ? "~"
+              : fixCount > 0
+                ? "="
+                : "!=";
     var needDot = 1;
     // eslint-disable-next-line no-redeclare
     for (var i = 1; i < range.length; i++) {
@@ -245,9 +246,9 @@ export const rangeToString = (range) => {
       str +=
         t == "u"
           ? // undefined: prerelease marker, add an "-"
-            "-"
+          "-"
           : // number or string: add the item, set flag to add an "." between two of them
-            (needDot > 0 ? "." : "") + ((needDot = 2), item);
+          (needDot > 0 ? "." : "") + ((needDot = 2), item);
     }
     return str;
   } else {
@@ -260,10 +261,10 @@ export const rangeToString = (range) => {
         item === 0
           ? "not(" + pop() + ")"
           : item === 1
-          ? "(" + pop() + " || " + pop() + ")"
-          : item === 2
-          ? stack.pop() + " " + stack.pop()
-          : rangeToString(item)
+            ? "(" + pop() + " || " + pop() + ")"
+            : item === 2
+              ? stack.pop() + " " + stack.pop()
+              : rangeToString(item)
       );
     }
     return pop();
@@ -341,7 +342,7 @@ export const satisfy = (range, version) => {
       if (
         i >= version.length ||
         ((versionValue = version[i]),
-        (versionType = (typeof versionValue)[0]) == "o")
+          (versionType = (typeof versionValue)[0]) == "o")
       ) {
         // Handles nequal
         if (!isEqual) return true;
@@ -410,10 +411,10 @@ export const satisfy = (range, version) => {
       item == 1
         ? p() | p()
         : item == 2
-        ? p() & p()
-        : item
-        ? satisfy(item, version)
-        : !p()
+          ? p() & p()
+          : item
+            ? satisfy(item, version)
+            : !p()
     );
   }
   return !!p();

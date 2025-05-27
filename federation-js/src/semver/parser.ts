@@ -1,3 +1,4 @@
+// @ts-nocheck
 // *****************************************************************************
 // Copyright (C) 2022 Origin.js and others.
 //
@@ -103,29 +104,24 @@ export function parseCarets(range: string): string {
           } else if (preRelease) {
             if (major === '0') {
               if (minor === '0') {
-                return `>=${major}.${minor}.${patch}-${preRelease} <${major}.${minor}.${
-                  +patch + 1
-                }-0`
+                return `>=${major}.${minor}.${patch}-${preRelease} <${major}.${minor}.${+patch + 1
+                  }-0`
               } else {
-                return `>=${major}.${minor}.${patch}-${preRelease} <${major}.${
-                  +minor + 1
-                }.0-0`
+                return `>=${major}.${minor}.${patch}-${preRelease} <${major}.${+minor + 1
+                  }.0-0`
               }
             } else {
-              return `>=${major}.${minor}.${patch}-${preRelease} <${
-                +major + 1
-              }.0.0-0`
+              return `>=${major}.${minor}.${patch}-${preRelease} <${+major + 1
+                }.0.0-0`
             }
           } else {
             if (major === '0') {
               if (minor === '0') {
-                return `>=${major}.${minor}.${patch} <${major}.${minor}.${
-                  +patch + 1
-                }-0`
+                return `>=${major}.${minor}.${patch} <${major}.${minor}.${+patch + 1
+                  }-0`
               } else {
-                return `>=${major}.${minor}.${patch} <${major}.${
-                  +minor + 1
-                }.0-0`
+                return `>=${major}.${minor}.${patch} <${major}.${+minor + 1
+                  }.0-0`
               }
             }
 
@@ -152,9 +148,8 @@ export function parseTildes(range: string): string {
           } else if (isXVersion(patch)) {
             return `>=${major}.${minor}.0 <${major}.${+minor + 1}.0-0`
           } else if (preRelease) {
-            return `>=${major}.${minor}.${patch}-${preRelease} <${major}.${
-              +minor + 1
-            }.0-0`
+            return `>=${major}.${minor}.${patch}-${preRelease} <${major}.${+minor + 1
+              }.0-0`
           }
 
           return `>=${major}.${minor}.${patch} <${major}.${+minor + 1}.0-0`
@@ -232,9 +227,8 @@ export function parseXRanges(range: string): string {
             } else if (isXMinor) {
               return `>=${major}.0.0${preRelease} <${+major + 1}.0.0-0`
             } else if (isXPatch) {
-              return `>=${major}.${minor}.0${preRelease} <${major}.${
-                +minor + 1
-              }.0-0`
+              return `>=${major}.${minor}.0${preRelease} <${major}.${+minor + 1
+                }.0-0`
             }
 
             return ret

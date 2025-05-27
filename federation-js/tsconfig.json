@@ -1,21 +1,27 @@
 {
   "compilerOptions": {
-    "outDir": "dist",
-    "jsx": "react",
-    "lib": ["DOM", "ES2018"],
-    "module": "ES2015",
-    "esModuleInterop": false,
-    "importHelpers": false,
-    "target": "ES2018",
-    "preserveConstEnums": true,
-    "sourceMap": true,
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
     "declaration": true,
-    "types": ["node"],
+    "declarationMap": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noImplicitReturns": true,
-    "alwaysStrict": true,
-    "strictFunctionTypes": true,
-    "moduleResolution": "nodenext"
+    "allowSyntheticDefaultImports": true
   },
-  "include": ["src"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

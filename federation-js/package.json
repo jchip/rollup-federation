@@ -4,11 +4,26 @@
   "description": "",
   "source": "src/federation-js.ts",
   "main": "dist/federation-js.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/federation-js.js",
+      "require": "./dist/federation-js.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts"
+    },
+    "./container": {
+      "types": "./dist/container.d.ts"
+    }
+  },
   "homepage": "",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "xrun -s clean parcel minify",
+    "build": "xrun -s clean tsc parcel minify",
     "clean": "rm -rf dist",
+    "tsc": "tsc",
     "parcel": "parcel build --no-cache",
     "minify": "terser --config-file .terserrc -o dist/federation-js.min.js -- dist/federation-js.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -16,7 +31,6 @@
   "author": "",
   "files": [
     "src",
-    "lib",
     "dist"
   ],
   "keywords": [],
@@ -26,10 +40,13 @@
   },
   "devDependencies": {
     "@parcel/config-default": "^2.9.3",
+    "@parcel/feature-flags": "2.15.2",
+    "@parcel/packager-ts": "2.15.2",
     "@parcel/transformer-typescript-tsc": "^2.9.3",
-    "@types/node": "^20.4.7",
+    "@parcel/transformer-typescript-types": "2.15.2",
+    "@types/node": "^22.15.21",
     "@xarc/run": "^1.1.1",
-    "parcel": "^2.9.3",
+    "parcel": "2.15.2",
     "terser": "^5.19.2",
     "typescript": "^5.1.6"
   }
