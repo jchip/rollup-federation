@@ -52,6 +52,17 @@ export type FederationPluginOptions = {
   emitFederationJson?: boolean;
   /** Version of this federation container */
   version?: string;
+  /** Dynamic import rendering for specific import types */
+  renderDynamicImport?: {
+    [type: string]: {
+      /** ID prefix for internal tracking (e.g., "-MF_EXPOSE", "-CUSTOM_TYPE") */
+      idPrefix: string;
+      /** Code to inject before the import specifier */
+      left: string;
+      /** Code to inject after the import specifier */
+      right: string;
+    };
+  };
 };
 
 const CONTAINER_SIG = `_mf_container_`;
@@ -157,6 +168,25 @@ export default function federation(options: FederationPluginOptions): Plugin {
   const fynPathSig = "/node_modules/.f/_/";
   const collectedShares: Record<string, any> = {};
   const emitFederationJson = options.emitFederationJson !== false;
+
+  // Add default configurations for common dynamic import types if not specified
+  const dynamicImportConfigs: NonNullable<FederationPluginOptions['renderDynamicImport']> = {
+    // Default configurations for common types
+    "mf-expose": {
+      idPrefix: "-MF_EXPOSE",
+      left: "Federation._importExpose(",
+      right: ")"
+    },
+    "mf-shared": {
+      idPrefix: "-MF_SHARED",
+      left: "Federation._importShared(",
+      right: ")"
+    },
+    // User-specified configurations override defaults
+    ...(options.renderDynamicImport || {})
+  };
+
+  const customDynamicImportTypes = Object.keys(dynamicImportConfigs);
 
   const debug = options.debugging
     ? (...args: any[]) => console.log(...args)
@@ -891,7 +921,7 @@ var System = Federation._mfBind(
      *
      * @param {string} specifier - The specifier of the dynamic import
      * @param {string} importer - The importer of the dynamic import
-     * @param {Object} options - Additional options for the dynamic import
+     * @param {Object} rollupOptions - Additional options for the dynamic import
      * @returns {Object|null} Resolved dynamic import or null to use default resolution
      */
     resolveDynamicImport(
@@ -900,45 +930,23 @@ var System = Federation._mfBind(
       // @ts-ignore
       importer: any,
       // @ts-ignore
-      options: any
+      rollupOptions: any
     ) {
-      debug("resolveDynamicImport", specifier, importer, options);
+      debug("resolveDynamicImport", specifier, importer, rollupOptions);
 
-      // if (specifier && specifier.includes("apply-color")) {
-      //   return specifier + `?mf=1&s=default&v=^1.7.1`;
-      // }
+      const attributes = rollupOptions?.attributes || {};
 
-      const attributes = options?.attributes || {};
-
-
-      if (attributes.type === "mf-shared" || attributes.type === "federation-shared") {
+      // Check configured dynamic import types
+      if (attributes.type && dynamicImportConfigs[attributes.type]) {
+        const config = dynamicImportConfigs[attributes.type];
         return {
-          id: `-MF_SHARED ${attributes.fynapp} ${attributes.requiredVersion} ${specifier}`,
+          id: `${config.idPrefix} ${specifier} ${attributes.requireVersion || ''}`,
           external: true,
           moduleSideEffects: "no-treeshake",
           dynamicImport: true,
         };
       }
 
-      if (attributes.type === "mf-expose" || attributes.type === "federation-expose") {
-        return {
-          id: `-MF_EXPOSE ${specifier} ${attributes.requireVersion}`,
-          external: true,
-          moduleSideEffects: "no-treeshake",
-          dynamicImport: true,
-        };
-      }
-
-      // TODO: module federation plugin should not know about fynapp
-      // - add plugin config to allow callbacks to handle dynamic imports
-      if (attributes.type === "fynapp-middleware") {
-        return {
-          id: `-FYNAPP_MW ${attributes.fynapp} ${specifier}`,
-          external: true,
-          moduleSideEffects: "no-treeshake",
-          dynamicImport: true,
-        };
-      }
       return null;
     },
 
@@ -974,25 +982,18 @@ var System = Federation._mfBind(
         moduleId,
         targetModuleId
       );
-      if (targetModuleId?.startsWith("-MF_SHARED ")) {
-        return {
-          left: "Federation._importShared(",
-          right: `)`,
-        };
-      }
 
-      if (targetModuleId?.startsWith("-FYNAPP_MW ")) {
-        return {
-          left: "__useFynAppMiddleware(",
-          right: ")",
-        };
-      }
-
-      if (targetModuleId?.startsWith("-MF_EXPOSE ")) {
-        return {
-          left: `Federation._importExpose(`,
-          right: ")",
-        };
+      // Check configured dynamic import types
+      if (targetModuleId) {
+        for (const dynImpType of customDynamicImportTypes) {
+          const config = dynamicImportConfigs[dynImpType];
+          if (targetModuleId.startsWith(`${config.idPrefix} `)) {
+            return {
+              left: config.left,
+              right: config.right,
+            };
+          }
+        }
       }
 
       /**
